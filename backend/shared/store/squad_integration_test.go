@@ -118,6 +118,37 @@ WHERE appearances=1 AND goals IS NULL AND saves IS NULL`); got != 1 {
 	}
 }
 
+// A previous club or provider's known measurements cannot hold a new
+// scope's first observation. Both sources here resolve to the same player.
+func TestReplaceSquadAcceptsSparseCountsFromANewTeamOrSource(t *testing.T) {
+	owner, pool, dsn := newIntegrationStoreDSN(t)
+	mustSeedTwoTeams(t, owner)
+	mustSeedSeason(t, pool)
+	writer, _ := newIngesterRoleStore(t, pool, dsn)
+	ctx := context.Background()
+	ids := map[string]uuid.UUID{}
+	members := sampleSquadMembers()[:1]
+	write := func(team, provider string) {
+		t.Helper()
+		if err := writer.ReplaceSquad(ctx, "premier-league", "2026-27", team, provider, members, ids); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct{ team, provider string }{{"eng-chelsea", "espn"}, {"eng-arsenal", "other"}} {
+		members[0].Stats = &model.PlayerSeasonStats{Goals: intPtr(0)}
+		write("eng-arsenal", "espn")
+		members[0].Stats = &model.PlayerSeasonStats{Appearances: intPtr(1), OmittedMeasurements: []string{"goals"}}
+		write("eng-arsenal", "espn")
+		if got := countRows(t, pool, `SELECT count(*) FROM player_season_stat WHERE goals=0 AND appearances IS NULL`); got != 1 {
+			t.Fatal("an observed zero must survive an omitted measurement in the same scope")
+		}
+		write(tc.team, tc.provider)
+		if got := countRows(t, pool, `SELECT count(*) FROM player_season_stat WHERE appearances=1 AND goals IS NULL AND team_id=$1 AND source=$2`, tc.team, tc.provider); got != 1 {
+			t.Fatalf("missing first observation for %s/%s", tc.team, tc.provider)
+		}
+	}
+}
+
 func TestReplaceSquadPreservesDemographicsWhenLaterPayloadOmitsThem(t *testing.T) {
 	squadStore, pool := newIntegrationStore(t)
 	mustSeedTwoTeams(t, squadStore)

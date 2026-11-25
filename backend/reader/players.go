@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -32,22 +33,23 @@ type CareerStint struct {
 }
 
 type PlayerProfile struct {
-	ID             string              `json:"id"`
-	PlayerSlug     *string             `json:"playerSlug"`
-	Name           string              `json:"name"`
-	Age            *int                `json:"age"`
-	Position       string              `json:"position"`
-	Jersey         *string             `json:"jersey"`
-	Nationality    *string             `json:"nationality"`
-	FlagURL        *string             `json:"flagUrl"`
-	HeadshotURL    *string             `json:"headshotUrl"`
-	Team           *espn.Team          `json:"team"`
-	SeasonLabel    string              `json:"seasonLabel"`
-	Totals         []PlayerSeasonTotal `json:"totals"`
-	TotalsRetained bool                `json:"totalsRetained,omitempty"`
-	GameLogLabel   string              `json:"gameLogLabel"`
-	GameLog        []GameLogRow        `json:"gameLog"`
-	Career         []CareerStint       `json:"career"`
+	ID               string              `json:"id"`
+	PlayerSlug       *string             `json:"playerSlug"`
+	Name             string              `json:"name"`
+	Age              *int                `json:"age"`
+	Position         string              `json:"position"`
+	Jersey           *string             `json:"jersey"`
+	Nationality      *string             `json:"nationality"`
+	FlagURL          *string             `json:"flagUrl"`
+	HeadshotURL      *string             `json:"headshotUrl"`
+	Team             *espn.Team          `json:"team"`
+	SeasonLabel      string              `json:"seasonLabel"`
+	Totals           []PlayerSeasonTotal `json:"totals"`
+	TotalsRetained   bool                `json:"totalsRetained,omitempty"`
+	TotalsObservedAt *time.Time          `json:"totalsObservedAt,omitempty"`
+	GameLogLabel     string              `json:"gameLogLabel"`
+	GameLog          []GameLogRow        `json:"gameLog"`
+	Career           []CareerStint       `json:"career"`
 }
 
 func isCanonicalPlayerID(raw string) bool {
@@ -116,6 +118,7 @@ SELECT p.id::text,coalesce(p.known_as,p.full_name),
  THEN extract(year FROM age((current_timestamp AT TIME ZONE 'UTC')::date,p.birth_date))::int END,
  coalesce(sm.position,CASE WHEN NOT $6 THEN p.position END,''),nullif(p.nationality,''),CASE WHEN NOT $6 THEN p.flag_url END,p.headshot_url,sm.shirt_number::text,
  sm.player_id IS NOT NULL AND (` + rosterStatsRetainedSQL + `),
+ CASE WHEN $7 AND ` + verifiedRetainedStatsSQL + ` THEN st.observed_at AT TIME ZONE 'UTC' END,
  t.id,t.name,t.abbr,t.crest_url,coalesce(sn.label||' '||c.short_name||' Stats',''),
  (SELECT count(*) FROM (SELECT 1 FROM appearance a JOIN match m ON m.id=a.match_id
  WHERE a.player_id=p.id AND m.competition_id=$2 AND m.season_id=$3
@@ -137,7 +140,7 @@ func (s *Store) Player(ctx context.Context, id, competition, season string) (*Pl
 	p := &PlayerProfile{Totals: []PlayerSeasonTotal{}, GameLog: []GameLogRow{}, Career: []CareerStint{}, GameLogLabel: "Last 5 Matches"}
 	var teamID, name, abbr, crest *string
 	var candidates int
-	err := s.db.QueryRow(ctx, playerIdentitySQL, id, competition, season, visibleEntityScopes(ctx), canRead(ctx, "squad"), archiveRosterEdition(ctx)).Scan(&p.ID, &p.Name, &p.Age, &p.Position, &p.Nationality, &p.FlagURL, &p.HeadshotURL, &p.Jersey, &p.TotalsRetained, &teamID, &name, &abbr, &crest, &p.SeasonLabel, &candidates)
+	err := s.db.QueryRow(ctx, playerIdentitySQL, id, competition, season, visibleEntityScopes(ctx), canRead(ctx, "squad"), archiveRosterEdition(ctx), ctx.Value(retainedStatsKey{}) == true).Scan(&p.ID, &p.Name, &p.Age, &p.Position, &p.Nationality, &p.FlagURL, &p.HeadshotURL, &p.Jersey, &p.TotalsRetained, &p.TotalsObservedAt, &teamID, &name, &abbr, &crest, &p.SeasonLabel, &candidates)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

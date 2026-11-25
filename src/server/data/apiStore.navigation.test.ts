@@ -105,6 +105,16 @@ function scenario(mode: 'list' | 'player', override?: Override) {
 }
 
 describe('reader identity navigation across requests', () => {
+  it('keeps verified historical totals on the website player and rejects a future confirmation', async () => {
+    const totalsObservedAt = '2026-08-09T08:37:13.000Z';
+    function retained(at: string) {
+      return scenario('player', url => url.pathname.includes('/players/')
+        ? wire({ ...playerVector.profile, totals: [{ name: 'totalGoals', label: 'Goals', value: 2, display: '2' }], totalsRetained: true, totalsObservedAt: at }, scopes.player) : undefined);
+    }
+    expect(await retained(totalsObservedAt).make().getPlayer(worldCup, '297287'))
+      .toMatchObject({ totals: [{ name: 'totalGoals', value: 2 }], totalsObservedAt });
+    await expect(retained('2026-08-11T12:15:00Z').make().getPlayer(worldCup, '297287')).resolves.toBeNull();
+  });
   it('joins T7.3 badges to normalized standings and opens their popup on a separate instance', async () => {
     // The derived-standings vector is an actual reader body; these explicit test
     // refs model its resolver-assigned IDs without guessing from match content.

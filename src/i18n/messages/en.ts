@@ -131,6 +131,7 @@ export const en = {
   'squad.saves': 'Saves',
   'squad.goalsConcededAbbreviation': 'GA',
   'squad.goalsConceded': 'Goals conceded',
+  'squad.statsLastVerified': (date: string) => `Stats last verified ${date}`,
   'squad.hasNotAppeared': 'Has not appeared',
   'squad.unavailable': 'Squad unavailable.',
   'news.title': 'News',

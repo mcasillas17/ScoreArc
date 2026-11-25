@@ -60,6 +60,25 @@ it('projects retained profile totals only when the wire observation is valid', (
   }
 });
 
+it('keeps a retained block and its verified time on squad, team and player responses', () => {
+  const statsObservedAt = '2026-08-09T12:00:00.123456Z';
+  const measured = squad.find(row => row.stats?.totalGoals != null)!;
+  const retained = { ...measured, statsRetained: true, statsObservedAt };
+  const expected = { ...measured, statsObservedAt };
+  expect(decodeReaderSquad([retained])).toEqual([expected]);
+  expect(decodeReaderTeam({ ...team, squad: [retained] }).squad).toEqual([expected]);
+
+  const profile = vectors.player.reader.profile;
+  expect(decodeReaderPlayer({ ...profile, totalsRetained: true, totalsObservedAt: statsObservedAt }))
+    .toEqual({ ...profile, totalsObservedAt: statsObservedAt });
+  for (const bad of [null, 'junk', '2026-02-31T12:00:00Z']) {
+    expect(() => decodeReaderSquad([{ ...retained, statsObservedAt: bad }])).toThrow();
+    expect(() => decodeReaderPlayer({ ...profile, totalsRetained: true, totalsObservedAt: bad })).toThrow();
+  }
+  expect(() => decodeReaderSquad([{ ...measured, statsObservedAt }])).toThrow();
+  expect(() => decodeReaderPlayer({ ...profile, totalsObservedAt: statsObservedAt })).toThrow();
+});
+
 describe('reader DTO decoding', () => {
   it.each(cases)('preserves every wire field and explicit null in %s', (_name, decode, raw) => {
     expect(decode(raw)).toEqual(raw);

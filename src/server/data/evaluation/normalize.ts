@@ -1,6 +1,7 @@
+import { isISOInstant } from '@/lib/matchFreshness';
 import { canonicalTeamId } from '../teamIdentity';
 
-export const NORMALIZATION_VERSION = 'reader-evaluation-v4';
+export const NORMALIZATION_VERSION = 'reader-evaluation-v5';
 
 // These ESPN asset URLs have no team ID. Each default PNG was verified
 // byte-for-byte against this team's ScoreArc mirror before adding the pair.
@@ -178,6 +179,21 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
       ? `${typeof value.id === 'string' ? value.id : ''}\0${role === 'groups' && typeof value.name === 'string' ? value.name : ''}` : '';
     return [...values].sort((a, b) => lexicographic(key(a), key(b)));
   }
+  // Keep comparing the same current-only projection as the original trial.
+  // The selected reader response can still display the dated, historical block.
+  function currentRosterView(row: Record<string, unknown>, role: Role, path: string): Record<string, unknown> {
+    const clock = role === 'squadPlayer' ? 'statsObservedAt' : role === 'player' ? 'totalsObservedAt' : undefined;
+    if (!clock || !isISOInstant(row[clock])) return row;
+    const current = { ...row };
+    delete current[clock];
+    const field = role === 'squadPlayer' ? 'stats' : 'totals';
+    normalizers.add('retained-roster-current-view-v1');
+    const scope = path.replace(/\[\d+\]/g, '[]');
+    excluded.add(`${scope}.${clock}`);
+    excluded.add(`${scope}.${field}`);
+    current[field] = role === 'squadPlayer' ? null : [];
+    return current;
+  }
   function visit(a: unknown, b: unknown, role: Role, path: string, key: string, parent: Role, depth: number) {
     if (++visits > 100_000 || depth > 32) {
       truncated = true;
@@ -194,7 +210,8 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
       return;
     }
     if (object(a) && object(b)) {
-      const leftKeys = Object.keys(a), rightKeys = Object.keys(b);
+      const left = currentRosterView(a, role, path);
+      const leftKeys = Object.keys(left), rightKeys = Object.keys(b);
       if (leftKeys.length > 100_000 || rightKeys.length > 100_000) { truncated = true; difference(path, 'coverage', false); return; }
       const keys = [...new Set([...leftKeys, ...rightKeys])].sort(lexicographic);
       for (const name of keys) {
@@ -202,9 +219,9 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
         const map = role === 'links' || role === 'formTeams';
         const segment = map ? '<key>' : fields.has(name) ? name : '<field>';
         const next = `${path}.${segment}`;
-        if (policy(role, name, path, a, b)) continue;
-        if (!Object.hasOwn(a, name) || !Object.hasOwn(b, name)) difference(next, map ? 'coverage' : category(name, role));
-        else visit(a[name], b[name], childRole(role, name), next, name, role, depth + 1);
+        if (policy(role, name, path, left, b)) continue;
+        if (!Object.hasOwn(left, name) || !Object.hasOwn(b, name)) difference(next, map ? 'coverage' : category(name, role));
+        else visit(left[name], b[name], childRole(role, name), next, name, role, depth + 1);
       }
       return;
     }

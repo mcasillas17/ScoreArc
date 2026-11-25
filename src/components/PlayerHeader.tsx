@@ -5,6 +5,7 @@ import type { Translator } from '@/i18n/translate';
 import { teamHref } from './teamHref';
 import TeamBadge from './TeamBadge';
 import PlayerPortrait from './PlayerPortrait';
+import RetainedStatsTime from './RetainedStatsTime';
 
 const APPEARANCES = 'starts-subIns';
 
@@ -106,6 +107,7 @@ export default function PlayerHeader({
               {apps && ' · '}
               {/* The provider labels the season itself ("2026-27 Liga MX Stats"). */}
               {player.seasonLabel || t('player.seasonStats')}
+              {player.totalsObservedAt && <> · <RetainedStatsTime observedAt={player.totalsObservedAt} /></>}
             </p>
           </>
         )}

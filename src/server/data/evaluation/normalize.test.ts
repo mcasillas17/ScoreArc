@@ -15,8 +15,26 @@ describe('reader evaluation semantic policy', () => {
     const result = compare(reader, original);
     expect(result.differences).toEqual([]);
     expect(result.normalizers).toEqual(expect.arrayContaining(['instant-v1', 'match-set-order-v1']));
-    expect(NORMALIZATION_VERSION).toBe('reader-evaluation-v4');
+    expect(NORMALIZATION_VERSION).toBe('reader-evaluation-v5');
     expect(original[0].kickoff).toBe('2026-06-29T17:00Z');
+  });
+
+  it('compares current roster evidence while preserving the retained display for a reader response', () => {
+    const held = { id: '11', stats: { totalGoals: 2 }, statsObservedAt: '2026-11-24T09:00:00Z' };
+    const missing = { id: '11', stats: null };
+    const current = { id: '12', stats: { totalGoals: 1 } };
+    expect(compare([held, current], [missing, current], 'getSquad').differences).toEqual([]);
+    expect(compare({ squad: [held] }, { squad: [missing] }, 'getTeam').normalizers).toContain('retained-roster-current-view-v1');
+    expect(held.stats.totalGoals).toBe(2);
+    // A held block cannot establish agreement with any current ESPN observation.
+    expect(compare([held], [{ id: '11', stats: held.stats }], 'getSquad').unequal).toBe(true);
+    expect(compare([held], [{ ...missing, id: '99' }], 'getSquad').unequal).toBe(true);
+    expect(compare([held, current], [missing, { ...current, stats: null }], 'getSquad').unequal).toBe(true);
+    expect(compare({ stats: held.stats, statsObservedAt: held.statsObservedAt }, { stats: null }, 'getMatchSummary').unequal).toBe(true);
+
+    const player = { id: '11', totals: [{ name: 'totalGoals', value: 2 }], totalsObservedAt: held.statsObservedAt };
+    expect(compare({ player }, { player: { id: '11', totals: [] } }, 'playerPopup').differences).toEqual([]);
+    expect(compare(player, { id: '11', totals: player.totals }, 'getPlayer').unequal).toBe(true);
   });
 
   it('does not round distinct instants or reorder upcoming matches', () => {

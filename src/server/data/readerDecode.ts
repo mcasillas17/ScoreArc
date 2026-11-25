@@ -136,10 +136,10 @@ const squadPlayer = object({
 });
 const rosterPlayer: Decoder<SquadPlayer> = value => {
   if (!value || typeof value !== 'object' || !('statsRetained' in value)) return squadPlayer(value);
-  const { statsRetained, ...raw } = value;
+  const { statsRetained, statsObservedAt, ...raw } = value as Record<string, unknown>;
   const player = squadPlayer(raw);
   if (statsRetained !== true || player.stats === null) return invalid();
-  return { ...player, stats: null };
+  return statsObservedAt === undefined ? { ...player, stats: null } : { ...player, statsObservedAt: instant(statsObservedAt) };
 };
 export const decodeReaderSquad: Decoder<SquadPlayer[]> = array(rosterPlayer, MAX_SQUAD_PLAYERS);
 const scope = object({ competitionId: text, seasonId: text });
@@ -180,8 +180,10 @@ const playerProfile: Decoder<ReaderPlayer> = object({
 
 export const decodeReaderPlayer: Decoder<ReaderPlayer> = value => {
   if (!value || typeof value !== 'object' || !('totalsRetained' in value)) return playerProfile(value);
-  const { totalsRetained, ...rest } = value;
+  const { totalsRetained, totalsObservedAt, ...rest } = value as Record<string, unknown>;
   const profile = playerProfile(rest);
   if (totalsRetained !== true || !profile.totals.length) return invalid();
-  return { ...profile, totals: [] };
+  if (totalsObservedAt === undefined) return { ...profile, totals: [] };
+  if (profile.team === null) return invalid();
+  return { ...profile, totalsObservedAt: instant(totalsObservedAt) };
 };

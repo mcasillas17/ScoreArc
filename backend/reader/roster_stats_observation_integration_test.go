@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +37,8 @@ func TestRosterStatsValidationPreservesReaderObservation(t *testing.T) {
 		name, field string
 		wantErr     bool
 	}{
+		{"renamed known stat", `,"statistics":{"splits":{"categories":[{"stats":[{"name":"appearances","value":5},{"name":"seasonGoals","value":3}]}]}}`, false},
+		{"removed known stat", strings.Replace(valid, `,{"name":"totalGoals","value":2}`, "", 1), false},
 		{"absent statistics", "", false},
 		{"null statistics", `,"statistics":null`, false},
 		{"empty statistics object", `,"statistics":{}`, true},
@@ -52,8 +55,10 @@ func TestRosterStatsValidationPreservesReaderObservation(t *testing.T) {
 			if _, err := owner.Exec(ctx, `UPDATE player_season_stat SET updated_at=$1,observed_at=$1 WHERE competition_id='world-cup' AND season_id='2026'`, old); err != nil {
 				t.Fatal(err)
 			}
-			if err := ingest(tc.field); (err != nil) != tc.wantErr {
-				t.Errorf("ingest error=%v want error=%t", err, tc.wantErr)
+			for range 2 { // A second fetch of the same changed shape cannot renew the clock.
+				if err := ingest(`,"jersey":"7"` + tc.field); (err != nil) != tc.wantErr {
+					t.Errorf("ingest error=%v want error=%t", err, tc.wantErr)
+				}
 			}
 			var goals, appearances *int
 			var updated, observed time.Time
@@ -78,20 +83,41 @@ func TestRosterStatsValidationPreservesReaderObservation(t *testing.T) {
 			if len(players) != 1 || players[0].Stats == nil || players[0].Stats.TotalGoals == nil || *players[0].Stats.TotalGoals != 2 {
 				t.Fatalf("retained reader measurements=%+v", players)
 			}
+			if !tc.wantErr && (!players[0].StatsRetained || players[0].Jersey == nil || *players[0].Jersey != 7) {
+				t.Fatalf("new membership and retained totals must be independently visible: %+v", players[0])
+			}
 		})
 	}
-	// Explicit complete empty categories are an accepted nullable observation,
-	// unlike an object which omitted the collection envelope.
-	if err := ingest(`,"statistics":{"splits":{"categories":[],"total":0}}`); err != nil {
-		t.Fatal(err)
-	}
-	response := performRequest(app.router(), "GET", "/v1/competitions/world-cup/2026/teams/nat-arg/squad")
-	if response.Code != 200 {
-		t.Fatalf("HTTP %d %s", response.Code, response.Body.String())
-	}
-	metadata := resourceHeader(t, response.Header()).Resources["seasonStats"]
-	if metadata.Status != "fresh" || metadata.Availability != "complete" || metadata.ObservedAt == nil || !metadata.ObservedAt.After(old) {
-		t.Fatalf("validated nullable observation=%+v", metadata)
+	// Once the original measurement returns, zero and explicit null are
+	// authoritative values. A reviewed complete empty block clears all totals.
+	for _, tc := range []struct {
+		name, field, wantGoals string
+	}{
+		{"recovered", strings.Replace(valid, `"value":2`, `"value":3`, 1), "3"},
+		{"zero", strings.Replace(valid, `"value":2`, `"value":0`, 1), "0"},
+		{"explicit null", strings.Replace(valid, `"value":2`, `"value":null`, 1), "null"},
+		{"empty collection", `,"statistics":{"splits":{"categories":[],"total":0}}`, "null"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := ingest(tc.field); err != nil {
+				t.Fatal(err)
+			}
+			response := performRequest(app.router(), "GET", "/v1/competitions/world-cup/2026/teams/nat-arg/squad")
+			if response.Code != 200 {
+				t.Fatalf("HTTP %d %s", response.Code, response.Body.String())
+			}
+			metadata := resourceHeader(t, response.Header()).Resources["seasonStats"]
+			if metadata.Status != "fresh" || metadata.Availability != "complete" || metadata.ObservedAt == nil || !metadata.ObservedAt.After(old) {
+				t.Fatalf("accepted observation=%+v", metadata)
+			}
+			var players []SquadPlayer
+			if err := json.Unmarshal(response.Body.Bytes(), &players); err != nil || len(players) != 1 || players[0].Stats == nil || players[0].StatsRetained {
+				t.Fatalf("expected current stats: %s (%v)", response.Body.String(), err)
+			}
+			if goals, _ := json.Marshal(players[0].Stats.TotalGoals); string(goals) != tc.wantGoals {
+				t.Fatalf("goals = %s, want %s", goals, tc.wantGoals)
+			}
+		})
 	}
 }
 

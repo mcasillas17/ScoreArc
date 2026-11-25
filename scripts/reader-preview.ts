@@ -145,7 +145,9 @@ function identityRows(scope: Scope, kind: string | null, from: string | null, id
   });
 }
 
-export function createPreviewServer(): Server {
+const retainedStatsAt = '2026-06-29T17:00:00Z';
+
+export function createPreviewServer(withRetainedRoster = false): Server {
   const faults = new Set<RouteName>();
   const calls = Object.fromEntries(routeNames.map(name => [name, 0]));
   const recent: { route: RouteName; scope: string; status: number }[] = [];
@@ -256,18 +258,24 @@ export function createPreviewServer(): Server {
         const rows = currentScope === 'world-cup/2026' ? leaderBoards[metric].slice(0, +limit) : [];
         return send(200, rows, evidence(['leaders', 'competition-season', rows.length], ['identity', 'competition-season']));
       }
+      const showObservedAt = req.headers['x-scorearc-roster-stats'] === 'retained-v1';
       if (route === 'players') {
         if (currentScope !== 'world-cup/2026' || id !== player.id) return send(404, { error: 'player not found' });
-        return send(200, player, evidence(['identity', 'player'], ['seasonStats', 'player-season'], ['career', 'player'], ['gameLog', 'player-season'], ['participation', 'selection']));
+        const profile = withRetainedRoster ? { ...player, totalsRetained: true, ...(showObservedAt && { totalsObservedAt: retainedStatsAt }) } : player;
+        return send(200, profile, evidence(['identity', 'player'], ['seasonStats', 'player-season'], ['career', 'player'], ['gameLog', 'player-season'], ['participation', 'selection']));
       }
       const team = teams.get(id);
       if (!team) return send(404, { error: 'team not found' });
-      const squad = squadFor(scope, id);
+      const members = squadFor(scope, id);
+      const squad = withRetainedRoster ? members.map(member => ({
+        ...member, stats: Object.fromEntries(player.totals.map(row => [row.name, row.value])),
+        statsRetained: true, ...(showObservedAt && { statsObservedAt: retainedStatsAt }),
+      })) : members;
       if (route === 'squad') return send(200, squad, evidence(['identity', 'team-season'], ['squad', 'team-season', squad.length], ['seasonStats', 'team-season']));
       const schedule = scopedMatches.filter(match => match.home.id === id || match.away.id === id).map(match => ({ ...match, scope }));
       const body = decodeReaderTeam({ team, location: null, color: null, altColor: null, record: null, standing: null,
-        standingSummary: null, squad, schedule, scheduleAvailability: { results: 'available', upcoming: 'available' } });
-      return send(200, body, evidence(['identity', 'team-season'], ['matches', 'team-season', schedule.length], ['detail', 'team-season'],
+        standingSummary: null, squad: members, schedule, scheduleAvailability: { results: 'available', upcoming: 'available' } });
+      return send(200, { ...body, squad }, evidence(['identity', 'team-season'], ['matches', 'team-season', schedule.length], ['detail', 'team-season'],
         ['standings', 'competition-season'], ['squad', 'team-season', squad.length], ['seasonStats', 'team-season']));
     } catch {
       send(500, { error: 'local fixture validation failed' });
@@ -278,7 +286,7 @@ export function createPreviewServer(): Server {
 }
 
 async function selfTest() {
-  const server = createPreviewServer();
+  const server = createPreviewServer(true);
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   assert(address && typeof address === 'object');
@@ -343,9 +351,13 @@ async function selfTest() {
     await store.getMatchSummary(worldCup, '760486', '467', '206');
     assert.equal((await store.getLeaders(worldCup)).assists.length, 10);
     assert.equal((await store.getTeam(worldCup, '202'))?.team.id, '202');
-    assert.equal((await store.getSquad(worldCup, '202'))[0].id, playerRef.providerAthleteId);
+    const [retained] = await store.getSquad(worldCup, '202');
+    assert.equal(retained.id, playerRef.providerAthleteId);
+    assert.equal(retained.stats?.totalGoals, 3);
+    assert.equal(retained.statsObservedAt, retainedStatsAt);
     const translatedPlayer = await store.getPlayer(worldCup, playerRef.providerAthleteId);
     assert.equal(translatedPlayer?.gameLog[0].eventId, playerRef.providerEventId);
+    assert.equal(translatedPlayer?.totalsObservedAt, retainedStatsAt);
     assert.equal(translatedPlayer?.gameLog[0].liveMatch?.homeScore, 2);
     assert.equal(translatedPlayer?.career[1].teamId, null);
     await store.getMatchSummary(worldCup, playerRef.providerEventId, '202', '478');
@@ -374,7 +386,7 @@ async function main() {
   assert(arg.length <= 1 && (arg.length === 0 || /^--port=[1-9][0-9]*$/.test(arg[0])), 'Use --self-test or --port=4399');
   const port = arg.length ? Number(arg[0].slice('--port='.length)) : 4399;
   assert(Number.isSafeInteger(port) && port > 0 && port <= 65535, 'Invalid port');
-  const server = createPreviewServer();
+  const server = createPreviewServer(true);
   server.on('error', error => { console.error(error.message); process.exitCode = 1; });
   server.listen(port, '127.0.0.1', () => console.log(`LOCAL SYNTHETIC reader listening at http://127.0.0.1:${port}; counters at /__test/state`));
 }

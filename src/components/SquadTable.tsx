@@ -5,6 +5,7 @@ import { useTranslations } from '@/i18n/I18nProvider';
 import type { MessageKey } from '@/i18n/messages/en';
 import type { PlayerSeasonStats, SquadPlayer } from '@/server/data/types';
 import PlayerName from './PlayerName';
+import RetainedStatsTime from './RetainedStatsTime';
 
 type StatKey = keyof PlayerSeasonStats;
 
@@ -146,6 +147,7 @@ export default function SquadTable({
                     className="sq-name"
                     linkClassName="sq-name-link"
                   />
+                  {player.statsObservedAt && <RetainedStatsTime observedAt={player.statsObservedAt} className="sq-tag" />}
                   {player.stats === null && (
                     <span className="sq-tag">
                       {t('squad.hasNotAppeared')}

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
@@ -212,7 +214,8 @@ type SquadPlayer struct {
 	Stats       *PlayerSeasonStats `json:"stats"`
 	// These totals are held from another observation. The most recent
 	// accepted roster for this club did not supply them.
-	StatsRetained bool `json:"statsRetained,omitempty"`
+	StatsRetained   bool       `json:"statsRetained,omitempty"`
+	StatsObservedAt *time.Time `json:"statsObservedAt,omitempty"`
 }
 
 type TeamRecord struct {

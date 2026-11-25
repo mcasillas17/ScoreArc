@@ -121,6 +121,9 @@ ON CONFLICT (competition_id, season_id, team_id, player_id) DO UPDATE SET
 			continue
 		}
 		stats := row.member.Stats
+		// Every total in a block shares one observation time. The conflict
+		// predicate checks the locked row so an incomplete block can neither
+		// erase a count nor advance its clock. Membership is still refreshed.
 		batch.Queue(`
 INSERT INTO player_season_stat (
   competition_id, season_id, player_id, team_id, appearances, sub_ins,
@@ -149,13 +152,17 @@ ON CONFLICT (competition_id, season_id, player_id) DO UPDATE SET
   shots_faced     = EXCLUDED.shots_faced,
   source          = EXCLUDED.source,
   observed_at     = clock_timestamp(),
-  updated_at      = now()`,
+  updated_at      = now()
+WHERE player_season_stat.team_id IS DISTINCT FROM EXCLUDED.team_id
+   OR player_season_stat.source IS DISTINCT FROM EXCLUDED.source
+   OR COALESCE(cardinality($21::text[]), 0) = 0
+   OR NOT (jsonb_strip_nulls(to_jsonb(player_season_stat)) ?| $21::text[])`,
 			competitionID, seasonID, row.playerID, teamID,
 			stats.Appearances, stats.SubIns, stats.Goals, stats.Assists,
 			stats.Shots, stats.ShotsOnTarget, stats.Offsides,
 			stats.FoulsCommitted, stats.FoulsSuffered, stats.OwnGoals,
 			stats.YellowCards, stats.RedCards, stats.Saves,
-			stats.GoalsConceded, stats.ShotsFaced, source,
+			stats.GoalsConceded, stats.ShotsFaced, source, stats.OmittedMeasurements,
 		)
 	}
 	if err := tx.SendBatch(opCtx, batch).Close(); err != nil {

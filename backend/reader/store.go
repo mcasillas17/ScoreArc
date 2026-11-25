@@ -519,6 +519,11 @@ var errTeamBlockTooLarge = errors.New("team block exceeds the reader's row bound
 const rosterStatsRetainedSQL = `st.player_id IS NOT NULL AND
   (st.team_id IS DISTINCT FROM sm.team_id OR st.source <> sm.source OR st.updated_at <> sm.updated_at)`
 
+// A retained total is displayable for this roster only with its own source, club
+// and accepted clock. Legacy rows have no observation; updated_at is never substituted.
+const verifiedRetainedStatsSQL = `st.team_id = sm.team_id AND st.source = 'espn' AND st.source = sm.source
+  AND st.updated_at < sm.updated_at AND st.observed_at > timestamptz '0001-01-01T00:00:00Z' AND st.observed_at <= now()`
+
 // The squad join is LEFT: a player in the squad with no player_season_stat row
 // has never been measured, and must still appear. An INNER join would silently
 // drop exactly the players the "has not appeared" row exists to show.
@@ -537,7 +542,8 @@ SELECT ref.source_id, COALESCE(p.known_as, p.full_name), sm.shirt_number, COALES
        st.offsides, st.fouls_committed, st.fouls_suffered, st.yellow_cards,
        st.red_cards, st.own_goals, st.saves, st.shots_faced, st.goals_conceded,
        (st.player_id IS NOT NULL) AS has_stats,
-       ` + rosterStatsRetainedSQL + ` AS stats_retained
+       ` + rosterStatsRetainedSQL + ` AS stats_retained,
+       CASE WHEN $6 AND ` + verifiedRetainedStatsSQL + ` THEN st.observed_at AT TIME ZONE 'UTC' END
 FROM squad_membership sm
 JOIN player p ON p.id = sm.player_id
 LEFT JOIN LATERAL (
@@ -746,7 +752,7 @@ func (s *Store) teamSquad(
 		date := asOf.UTC().Format(time.DateOnly)
 		ageDate = &date
 	}
-	rows, err := s.db.Query(ctx, teamSquadSQL, teamID, competition, season, ageDate, maxSquadRows+1)
+	rows, err := s.db.Query(ctx, teamSquadSQL, teamID, competition, season, ageDate, maxSquadRows+1, ctx.Value(retainedStatsKey{}) == true)
 	if err != nil {
 		return nil, err
 	}
@@ -765,7 +771,7 @@ func (s *Store) teamSquad(
 			&stats.TotalShots, &stats.ShotsOnTarget, &stats.Offsides,
 			&stats.FoulsCommitted, &stats.FoulsSuffered, &stats.YellowCards,
 			&stats.RedCards, &stats.OwnGoals, &stats.Saves, &stats.ShotsFaced,
-			&stats.GoalsConceded, &hasStats, &player.StatsRetained,
+			&stats.GoalsConceded, &hasStats, &player.StatsRetained, &player.StatsObservedAt,
 		); err != nil {
 			return nil, err
 		}

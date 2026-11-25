@@ -102,7 +102,7 @@ type CNews = { id: string; headline: string; description: string; published: str
 type CSeasonStats = CPlayerMatchStats;
 type CSquadPlayer = {
   id: string; name: string; jersey: number | null; position: string; age: number | null;
-  nationality: string | null; headshotUrl: string | null; stats: CSeasonStats | null;
+  nationality: string | null; headshotUrl: string | null; stats: CSeasonStats | null; statsObservedAt?: string;
 };
 type CPenaltyKick = { order: number; player: string; scored: boolean };
 type CH2H = { date: string; label: string };
@@ -144,7 +144,7 @@ type CPlayerProfile = {
   readerResources?: ReaderResources; playerSlug?: string | null;
   id: string; name: string; age: number | null; position: string; jersey: string | null; nationality: string | null;
   flagUrl: string | null; headshotUrl: string | null; team: CTeam | null; seasonLabel: string; totals: CSeasonTotal[];
-  gameLogLabel: string; gameLog: CGameLogRow[]; career: CCareerStint[];
+  totalsObservedAt?: string; gameLogLabel: string; gameLog: CGameLogRow[]; career: CCareerStint[];
 };
 // The reader keeps canonical identity and explicitly nullable unresolved career links.
 type CReaderPlayerProfile = Omit<CPlayerProfile, 'career'> & {
