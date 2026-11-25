@@ -6,7 +6,7 @@ import { parseRange, editionBounds } from './dateRange';
 import { EspnEditionError, completeCollection, requireSeason, requiresEditionEvidence, datedInEdition } from './providers/espn-edition';
 import { scoreboardUrl } from './endpoints';
 import { isScoreboardCount } from './providers/espn-matches';
-import { femenilLegRound, noteLeg, providerLeg } from './providers/espn-leg';
+import { liguillaLegRound, noteLeg, providerLeg } from './providers/espn-leg';
 
 interface FetchOptions { signal: AbortSignal; maxBytes: number }
 export type ScoreboardFetchJson = (url: string, options?: FetchOptions) => Promise<unknown>;
@@ -135,7 +135,7 @@ function eventEvidence(event: Raw, format?: PlayoffFormat): string {
     notes: notes?.slice(0, 1).map(n => selected(n, 'text')) ?? game.notes,
     // Secondary notes can affect only a two-legged match's ordinal. If it
     // cannot be reconciled, don't equate conflicting evidence with no evidence.
-    ordinal: femenilLegRound(format, season.slug)
+    ordinal: liguillaLegRound(format, season.slug)
       ? providerLeg(leg, notes ?? []) ?? notes?.slice(1).map(n => noteLeg(n.text)).filter(n => n !== undefined)
       : undefined,
   });

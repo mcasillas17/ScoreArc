@@ -165,7 +165,7 @@ describe('competition registry', () => {
     expect(OFFICIAL_R32_ORDER[0]).toEqual(['RSA', 'CAN']);
   });
 
-  it('registers the domestic leagues with their ESPN slugs, as no-bracket club competitions', () => {
+  it('registers domestic club leagues with their ESPN slugs and published knockout format', () => {
     const leagues: Record<string, string> = {
       'premier-league': 'eng.1',
       laliga: 'esp.1',
@@ -184,7 +184,7 @@ describe('competition registry', () => {
       expect(comp.teamStyle).toBe('crest');
       const season = comp.seasons[comp.currentSeasonId];
       expect(season, `${id} current season`).toBeDefined();
-      expect(season.format.hasBracket).toBe(false);
+      expect(season.format.hasBracket).toBe(id === 'liga-mx');
       expect(season.bracketOrder).toBeUndefined();
     }
   });

@@ -190,6 +190,8 @@ export type KnockoutRoundSlug =
   | 'final';
 
 export interface BracketMatch {
+  /** Published individual matches, in their actual home and away orientations. */
+  legs?: BracketMatch[];
   legNumber?: number | null;
   /** The actual leg to open from a two-leg aggregate. */
   detailMatch?: BracketMatch;

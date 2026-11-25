@@ -3,8 +3,8 @@ import type { PlayoffFormat } from '../competitions';
 type LegRound = 'quarterfinals' | 'semifinals' | 'final';
 
 // The scoreboard uses "apertura---quarterfinals"; the team schedule uses "Apertura - Quarterfinals".
-export function femenilLegRound(format: PlayoffFormat | undefined, phase: unknown): LegRound | null {
-  if (format !== 'femenil-apertura' || typeof phase !== 'string') return null;
+export function liguillaLegRound(format: PlayoffFormat | undefined, phase: unknown): LegRound | null {
+  if ((format !== 'femenil-apertura' && format !== 'liga-mx-apertura') || typeof phase !== 'string') return null;
   const name = phase.toLowerCase().split(/---|\s+-\s+/).at(-1);
   if (name === 'quarterfinals' || name === 'quarter-finals') return 'quarterfinals';
   if (name === 'semifinals' || name === 'semi-finals') return 'semifinals';
@@ -26,6 +26,6 @@ export function providerLeg(leg: { value?: unknown; displayValue?: string } | un
 }
 
 // FMF settles quarters and semis in regulation; only the final's return leg can go to penalties.
-export function playedLegStatus(status: string, round: string, ordinal: number | null | undefined): boolean {
-  return status === 'STATUS_FULL_TIME' || (round === 'final' && ordinal === 2 && status === 'STATUS_FINAL_PEN');
+export function playedLegStatus(status: string, round: string, ordinal: number | null | undefined, format?: PlayoffFormat): boolean {
+  return status === 'STATUS_FULL_TIME' || (round === 'final' && ordinal === 2 && (status === 'STATUS_FINAL_PEN' || (format === 'liga-mx-apertura' && status === 'STATUS_FINAL_AET')));
 }

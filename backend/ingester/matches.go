@@ -187,9 +187,9 @@ func (r *runner) processMatches(
 
 		// ESPN's winner flag on a leg can name the advancing team. Recompute
 		// even a backlog row's winner before it is written back to storage.
-		leg := espn.IsFemenilLeg(season, match.Round, match.Note) || (season.PlayoffFormat == config.FemenilApertura && match.WinnerResolved)
+		leg := espn.IsLiguillaLeg(season, match.Round, match.Note) || (season.HasLiguillaLegs() && match.WinnerResolved)
 		if leg && match.Home.ID == observedIdentity.HomeTeamID && match.Away.ID == observedIdentity.AwayTeamID {
-			match.WinnerID = espn.LegWinner(match.StatusName, match.Round, match.Note, match.Home.ID, match.Away.ID, match.HomeScore, match.AwayScore)
+			match.WinnerID = espn.LegWinner(season, match.StatusName, match.Round, match.Note, match.Home.ID, match.Away.ID, match.HomeScore, match.AwayScore)
 			match.WinnerFlagID, match.WinnerResolved = nil, true
 		}
 
@@ -311,7 +311,7 @@ func (r *runner) processMatches(
 
 			if summary.LegNote != nil {
 				match.Note = summary.LegNote
-				leg = espn.IsFemenilLeg(season, match.Round, match.Note)
+				leg = espn.IsLiguillaLeg(season, match.Round, match.Note)
 			}
 			detail := summary.Detail
 			if !season.Supports("participation") {
@@ -329,7 +329,7 @@ func (r *runner) processMatches(
 				match.HomeScore = summary.HomeScore
 				match.AwayScore = summary.AwayScore
 				if leg {
-					winner := espn.LegWinner(match.StatusName, match.Round, match.Note, match.Home.ID, match.Away.ID, match.HomeScore, match.AwayScore)
+					winner := espn.LegWinner(season, match.StatusName, match.Round, match.Note, match.Home.ID, match.Away.ID, match.HomeScore, match.AwayScore)
 					match.WinnerID, identity.WinnerTeamID, match.WinnerResolved = winner, winner, true
 				} else if detail.Shootout != nil {
 					// A single match's final shootout outranks the scoreboard's earlier evidence.

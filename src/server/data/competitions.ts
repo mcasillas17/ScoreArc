@@ -17,7 +17,7 @@ export function supportsResource(season: Season, resource: EditionResource): boo
     (resource !== 'news' || (season.publication !== 'archive' && season.sections.includes('news')));
 }
 
-export type PlayoffFormat = 'nwsl' | 'femenil-apertura';
+export type PlayoffFormat = 'nwsl' | 'femenil-apertura' | 'liga-mx-apertura';
 
 export type ChampionTitleKey = 'champion.world' | 'champion.competition';
 
@@ -98,6 +98,8 @@ export interface Season {
   sections: Section[];
   format: { hasBracket: boolean; hasGroups: boolean; hasThirdPlaceRace: boolean };
   bracketDatesRange?: string; // ESPN date-range for the bracket scoreboard
+  /** UTC dates of the published quarterfinals, for older match rows missing a round. */
+  quarterfinalDatesRange?: string;
   bracketOrder?: [string, string][];
   // Knockout round slugs, outer->inner (leaf first, final last). Drives the
   // bracket's ring count + geometry. 2026 starts at round-of-32; 1998-2022 at
@@ -579,7 +581,23 @@ export const COMPETITIONS: Record<string, Competition> = {
   // Not ESPN's Liga MX asset: theirs is the BBVA Bancomer sponsor lockup, dark
   // on transparent — illegible at the bracket hub. TheSportsDB carries the real
   // tricolor Liga MX mark, same CDN the team crests already use.
-  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://r2.thesportsdb.com/images/media/league/badge/mav5rx1686157960.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }, undefined, undefined, 'liguilla', '#0b9e52'),
+  'liga-mx': {
+    id: 'liga-mx', name: 'Liga MX', shortName: 'Liga MX', espnSlug: 'mex.1',
+    kind: 'club', category: 'men', teamStyle: 'crest', emblem: '🇲🇽',
+    logo: 'https://r2.thesportsdb.com/images/media/league/badge/mav5rx1686157960.png',
+    accent: { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' },
+    bracketAccent: '#0b9e52', currentSeasonId: '2026-apertura',
+    seasons: {
+      '2026-apertura': {
+        id: '2026-apertura', label: 'Apertura 2026', playoffFormat: 'liga-mx-apertura',
+        sections: ['bracket', 'standings', 'scores', 'news'],
+        format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
+        bracketDatesRange: '20261125-20261231', quarterfinalDatesRange: '20261125-20261130',
+        projection: 'liguilla', knockoutRounds: ['quarterfinals', 'semifinals', 'final'],
+        qualification: { cut: 8, labelKey: 'standings.liguilla' },
+      },
+    },
+  },
   // The 2026–27 WSL schedule sends 13th to a survival playoff and relegates 14th.
   ...leagueCompetition(
     'wsl', "Women's Super League", 'WSL', 'eng.w.1', '🏴󠁧󠁢󠁥󠁮󠁧󠁿',

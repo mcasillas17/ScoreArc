@@ -86,6 +86,7 @@ type CStanding = {
 type CBracketTeam = { overallSeed?: number; id: string; name: string; abbr: string; crestUrl: string | null; placeholder: boolean };
 type CRound = 'round-of-32' | 'round-of-16' | 'quarterfinals' | 'semifinals' | '3rd-place-match' | 'final';
 type CBracketMatch = {
+  legs?: CBracketMatch[];
   legNumber?: number | null;
   detailMatch?: CBracketMatch; shootout?: { homeScore: number; awayScore: number };
   id: string; round: CRound; kickoff: string; home: CBracketTeam; away: CBracketTeam; homeScore: N; awayScore: N;

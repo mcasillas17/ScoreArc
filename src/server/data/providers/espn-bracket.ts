@@ -1,9 +1,10 @@
+import { buildLigaMxBracket } from '../ligaMxBracket';
 import type { PlayoffFormat } from '../competitions';
 import { overallOrder, playoffTable, projectLiguilla } from '../liguillaProjection';
 import type { Group, Standing, BracketRound, BracketMatch, BracketTeam, KnockoutRoundSlug } from '../types';
 import { mapState } from '../state';
 import { flaggedWinnerId, isScoreboardCount, matchResult, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
-import { femenilLegRound, noteLeg, playedLegStatus, providerLeg } from './espn-leg';
+import { liguillaLegRound, noteLeg, playedLegStatus, providerLeg } from './espn-leg';
 
 const ROUND_ORDER = [
   'round-of-32',
@@ -89,7 +90,7 @@ function mapBracketMatch(ev: any, slug: KnockoutRoundSlug, format?: PlayoffForma
   }
   const state = mapState(status.type.state, status.type.completed);
   const note = comp.notes?.[0]?.text ?? null;
-  const round = femenilLegRound(format, slug);
+  const round = liguillaLegRound(format, slug);
   const legNumber = round ? providerLeg(comp.leg, comp.notes ?? []) : null;
   const scoreline = {
     home: mapBracketTeam(home.team), away: mapBracketTeam(away.team),
@@ -98,7 +99,7 @@ function mapBracketMatch(ev: any, slug: KnockoutRoundSlug, format?: PlayoffForma
     state, statusName: status.type.name ?? '', note,
   };
   const { winnerId, shootout } = matchResult(scoreline, shootoutTotals(home.shootoutScore, away.shootoutScore),
-    flaggedWinnerId(home, away), round, legNumber);
+    flaggedWinnerId(home, away), round, legNumber, format);
   return {
     id: String(ev.id),
     round: slug,
@@ -132,6 +133,7 @@ export function mapBracket(raw: unknown, format?: PlayoffFormat, groups: Group[]
 
 /** Both stores present the same bracket from individual matches and the edition's regular-season tables. */
 export function buildPlayoffBracket(rounds: BracketRound[], format?: PlayoffFormat, groups: Group[] = []): BracketRound[] {
+  if (format === 'liga-mx-apertura') return buildLigaMxBracket(rounds, groups);
   if (!format) return rounds.map(r => ({ ...r, matches: mergeLegs(r.matches) }));
   const rows = playoffTable(groups, format);
   const finalTable = (format === 'nwsl' || rows.every(s => s.played === 14)) ? rows : [];

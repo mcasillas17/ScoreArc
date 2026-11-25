@@ -21,13 +21,13 @@ function toBracketTeam(s: Standing): BracketTeam {
   };
 }
 
-function tbd(id: string): BracketTeam {
+export function placeholderTeam(id: string): BracketTeam {
   return { id, name: '', abbr: '', crestUrl: null, placeholder: true };
 }
 
 // Synthetic fixture: nothing is scheduled, nothing has a score. The `proj-`
 // ids are deliberate non-events — a details fetch on one can only 404.
-function fixture(
+export function projectedMatch(
   id: string,
   round: BracketMatch['round'],
   home: BracketTeam,
@@ -43,8 +43,8 @@ function fixture(
 
 /** Require distinct clubs and explicit positions in the edition's full tables. */
 export function playoffTable(groups: Group[], format: PlayoffFormat): Standing[] {
-  const size = format === 'nwsl' ? 16 : 9;
-  if (groups.length !== (format === 'nwsl' ? 1 : 2)) return [];
+  const size = { nwsl: 16, 'femenil-apertura': 9, 'liga-mx-apertura': 18 }[format];
+  if (groups.length !== (format === 'femenil-apertura' ? 2 : 1)) return [];
   const rows = groups.flatMap(g => g.standings);
   if (new Set(rows.map(s => s.team.id)).size !== rows.length ||
       new Set(groups.map(g => g.id)).size !== groups.length) return [];
@@ -69,7 +69,9 @@ export function projectLiguilla(groups: Group[], format?: PlayoffFormat): Bracke
   if (!general) return null;
   const seed = (g: Group, rank: number) => {
     const rows = g.standings.filter(s => s.rank === rank);
-    return rows.length === 1 ? toBracketTeam(rows[0]) : null;
+    if (rows.length !== 1) return null;
+    const team = toBracketTeam(rows[0]);
+    return format === 'liga-mx-apertura' ? { ...team, overallSeed: rank } : team;
   };
   const [a, b] = groups;
   const pairs = format === 'femenil-apertura'
@@ -78,20 +80,20 @@ export function projectLiguilla(groups: Group[], format?: PlayoffFormat): Bracke
   const matches: BracketMatch[] = [];
   for (const [home, away] of pairs) {
     if (!home || !away) return null;
-    matches.push(fixture('proj-qf-' + (matches.length + 1), 'quarterfinals', home, away));
+    matches.push(projectedMatch('proj-qf-' + (matches.length + 1), 'quarterfinals', home, away));
   }
   return [
     { slug: 'quarterfinals', matches },
     {
       slug: 'semifinals',
       matches: [
-        fixture('proj-sf-1', 'semifinals', tbd('proj-tbd-1'), tbd('proj-tbd-2')),
-        fixture('proj-sf-2', 'semifinals', tbd('proj-tbd-3'), tbd('proj-tbd-4')),
+        projectedMatch('proj-sf-1', 'semifinals', placeholderTeam('proj-tbd-1'), placeholderTeam('proj-tbd-2')),
+        projectedMatch('proj-sf-2', 'semifinals', placeholderTeam('proj-tbd-3'), placeholderTeam('proj-tbd-4')),
       ],
     },
     {
       slug: 'final',
-      matches: [fixture('proj-f-1', 'final', tbd('proj-tbd-5'), tbd('proj-tbd-6'))],
+      matches: [projectedMatch('proj-f-1', 'final', placeholderTeam('proj-tbd-5'), placeholderTeam('proj-tbd-6'))],
     },
   ];
 }

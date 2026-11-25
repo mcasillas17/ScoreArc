@@ -6,7 +6,7 @@ import { completeCollectionMetadata } from './espn-collection';
 import { datedInEdition, requiresEditionEvidence, seasonIssue } from './espn-edition';
 import { isMatchKickoff } from '../matchKickoff';
 import { flaggedWinnerId, isScoreboardCount, matchResult, shootoutTotals } from './espn-matches';
-import { femenilLegRound, providerLeg } from './espn-leg';
+import { liguillaLegRound, providerLeg } from './espn-leg';
 
 /** The profile without the two blocks that come from other endpoints. */
 type TeamIdentity = Omit<TeamProfile, 'squad' | 'schedule' | 'scheduleAvailability'>;
@@ -246,7 +246,7 @@ export function mapTeamSchedule(raw: unknown, format?: PlayoffFormat): Match[] {
       const status = comp.status ?? ev.status;
       const type = status?.type;
       const state = type ? mapState(type.state, Boolean(type.completed)) : 'scheduled';
-      const round = femenilLegRound(format, ev.seasonType?.slug ?? ev.seasonType?.name ?? ev.season?.slug);
+      const round = liguillaLegRound(format, ev.seasonType?.slug ?? ev.seasonType?.name ?? ev.season?.slug);
       // Team schedules can put the leg and its aggregate result in the event headline.
       const note = comp.notes?.[0]?.text ?? (round ? comp.notes?.[0]?.headline : null) ?? null;
       const legNumber = round ? providerLeg(comp.leg, (comp.notes ?? []).flatMap((n: { text?: string; headline?: string }) =>
@@ -272,7 +272,7 @@ export function mapTeamSchedule(raw: unknown, format?: PlayoffFormat): Match[] {
         ...scoreline,
         minute: state === 'live' ? status?.displayClock || null : null,
         statusDetail: unplayed ? scheduledDetail(type?.shortDetail ?? '', ev.date) : type?.shortDetail ?? '',
-        ...matchResult(scoreline, structured, flaggedWinnerId(home, away), round, legNumber),
+        ...matchResult(scoreline, structured, flaggedWinnerId(home, away), round, legNumber, format),
         scorers: [],
         cards: [],
         shootoutDetail: null,

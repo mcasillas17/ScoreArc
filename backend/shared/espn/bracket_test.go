@@ -562,3 +562,32 @@ func TestNWSLChampionshipCompletesBracket(t *testing.T) {
 		t.Fatalf("unscoped bracket: %+v, %v", other, err)
 	}
 }
+
+func TestMensAperturaEditionIngestsBothLegsOfAllFourQuarterfinals(t *testing.T) {
+	registry, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	competition, _ := registry.Get("liga-mx")
+	season := competition.Seasons["2026-apertura"]
+	if !season.HasBracket || season.PlayoffFormat != config.LigaMXApertura || season.BracketDatesRange == nil {
+		t.Fatalf("missing configured Apertura playoff: %+v", season)
+	}
+	raw, err := os.ReadFile("../../../src/server/data/__fixtures__/liga-mx-apertura-quarterfinals.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legs, err := MapSeasonBracket(raw, season)
+	if err != nil || len(legs) != 8 {
+		t.Fatalf("ingested %d legs: %v", len(legs), err)
+	}
+	for i, leg := range legs {
+		if leg.Round != "quarterfinals" || leg.Note == nil || noteLeg(*leg.Note) != 1+i/4 || leg.WinnerID != nil {
+			t.Fatalf("unexpected leg: %+v", leg)
+		}
+	}
+	second, home, away := "2nd Leg", 2, 1
+	if winner := LegWinner(season, "STATUS_FINAL_AET", "final", &second, "h", "a", &home, &away); winner == nil || *winner != "h" {
+		t.Fatal("the completed extra-time return leg of the men's final lost its result")
+	}
+}
