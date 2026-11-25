@@ -848,8 +848,13 @@ and real Postgres reads prove accepted writes and least-privilege access.
   can be sampled/pruned, is best effort, and may report successful preservation
   of an absent board. Retry timestamps and `match.updated_at` are not evidence.
 - Squad membership uses its accepted collection observation. Its provider URL
-  is a **current roster**, attributed to the configured ingest season, not a
-  historical roster endpoint. Player totals use their own scoped accepted-write
+  in the scheduled ingester is a **current roster**, attributed to the configured
+  ingest season. The manual [2002 World Cup import](RELEASES.md#2002-world-cup-rosters)
+  uses season-qualified requests. Its archived squads carry `edition-roster`
+  provenance and require an accepted observation for that edition and team.
+  Closed editions can have incomplete coverage. A missing observation keeps
+  the squad unavailable even when the entrant is known.
+  Player totals use their own scoped accepted-write
   `player_season_stat.observed_at`; missing stats or a fresh roster never renew old totals. A mixture
   of known and missing totals is partial/unavailable, not wholly fresh.
   Supplied statistics must contain validated nested collections; an empty object

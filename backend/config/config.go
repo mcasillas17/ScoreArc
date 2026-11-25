@@ -15,6 +15,7 @@ import (
 var raw []byte
 
 type Season struct {
+	ArchiveRosters    bool     `json:"archiveRosters,omitempty"`
 	Monitored         bool     `json:"monitored"`
 	Publication       string   `json:"publication"`
 	Resources         []string `json:"resources"`

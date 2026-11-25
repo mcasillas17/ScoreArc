@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
@@ -59,6 +60,15 @@ func (s *Store) ReplaceSquad(
 		return err
 	}
 	defer rollback(opCtx, tx)
+	if err := replaceSquad(opCtx, tx, competitionID, seasonID, teamID, source, resolved, true, editionVerified...); err != nil {
+		return err
+	}
+	return observationFailure(tx.Commit(opCtx))
+}
+
+// Historical rosters provide edition facts. Only a current roster may refresh a
+// previously resolved player's global identity.
+func replaceSquad(opCtx context.Context, tx pgx.Tx, competitionID, seasonID, teamID, source string, resolved []resolvedSquadMember, updatePlayerProfiles bool, editionVerified ...bool) error {
 	if err := lockResourceCollection(opCtx, tx, competitionID, seasonID, "squad", teamID); err != nil {
 		return err
 	}
@@ -76,9 +86,11 @@ WHERE competition_id=$1 AND season_id=$2 AND team_id=$3`,
 			ErrPartialReplacement, existingCount, len(resolved))
 	}
 
+	batch := &pgx.Batch{}
 	keep := make([]uuid.UUID, 0, len(resolved))
 	for order, row := range resolved {
-		if _, err := tx.Exec(opCtx, `
+		if updatePlayerProfiles {
+			batch.Queue(`
 UPDATE player SET
   birth_date   = COALESCE($2, birth_date),
   nationality  = COALESCE(NULLIF($3, ''), nationality),
@@ -87,11 +99,10 @@ UPDATE player SET
   flag_url     = CASE WHEN NULLIF($3, '') IS NULL THEN flag_url ELSE NULLIF($6, '') END,
   updated_at   = now()
 WHERE id=$1`,
-			row.playerID, row.member.BirthDate, row.member.Nationality, row.member.HeadshotURL, row.member.FullName, row.member.FlagURL,
-		); err != nil {
-			return fmt.Errorf("update squad player demographics: %w", err)
+				row.playerID, row.member.BirthDate, row.member.Nationality, row.member.HeadshotURL, row.member.FullName, row.member.FlagURL,
+			)
 		}
-		if _, err := tx.Exec(opCtx, `
+		batch.Queue(`
 INSERT INTO squad_membership
   (competition_id, season_id, team_id, player_id, shirt_number, position, source, roster_order)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
@@ -103,16 +114,14 @@ ON CONFLICT (competition_id, season_id, team_id, player_id) DO UPDATE SET
   updated_at   = now()`,
 			competitionID, seasonID, teamID, row.playerID, row.member.Number,
 			nullIfEmpty(row.member.Position), source, order,
-		); err != nil {
-			return fmt.Errorf("upsert squad membership: %w", err)
-		}
+		)
 		keep = append(keep, row.playerID)
 
 		if row.member.Stats == nil {
 			continue
 		}
 		stats := row.member.Stats
-		if _, err := tx.Exec(opCtx, `
+		batch.Queue(`
 INSERT INTO player_season_stat (
   competition_id, season_id, player_id, team_id, appearances, sub_ins,
   goals, assists, shots, shots_on_target, offsides, fouls_committed,
@@ -147,9 +156,10 @@ ON CONFLICT (competition_id, season_id, player_id) DO UPDATE SET
 			stats.FoulsCommitted, stats.FoulsSuffered, stats.OwnGoals,
 			stats.YellowCards, stats.RedCards, stats.Saves,
 			stats.GoalsConceded, stats.ShotsFaced, source,
-		); err != nil {
-			return observationFailure(err)
-		}
+		)
+	}
+	if err := tx.SendBatch(opCtx, batch).Close(); err != nil {
+		return observationFailure(err)
 	}
 
 	if _, err := tx.Exec(opCtx, `
@@ -160,13 +170,7 @@ WHERE competition_id=$1 AND season_id=$2 AND team_id=$3
 	); err != nil {
 		return fmt.Errorf("prune squad membership: %w", err)
 	}
-	if err := recordResourceObservation(opCtx, tx, competitionID, seasonID, source, "squad", teamID, len(members), editionVerified...); err != nil {
-		return err
-	}
-	if err := tx.Commit(opCtx); err != nil {
-		return observationFailure(err)
-	}
-	return nil
+	return recordResourceObservation(opCtx, tx, competitionID, seasonID, source, "squad", teamID, len(resolved), editionVerified...)
 }
 
 // SetTeamRosterIdentity records a club's primary colour and location label,

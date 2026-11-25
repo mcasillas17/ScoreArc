@@ -4,6 +4,7 @@ import { resolveSeason, supportsResource, type CompetitionSeason } from './compe
 import type { BracketRound, Group, Match, MatchSummaryData, Team } from './types';
 import { TtlCache } from './cache';
 import { currentWeekRange, forwardRange, nowWindowRange, parseRange, editionBounds } from './dateRange';
+import { archiveRosterProfile } from './providers/espn-athlete';
 import { datedInEdition, requiresEditionEvidence } from './providers/espn-edition';
 import { utcDate } from './scoreboardWindow';
 import { canonicalTeamId, providerTeamId } from './teamIdentity';
@@ -12,7 +13,7 @@ import { deriveReaderStandings } from './derivedStandings';
 import { parseMatchFreshness } from '@/lib/matchFreshness';
 import type { ReaderResource, ReaderResourceName } from '@/lib/readerResources';
 import { ReaderFailure, type ReaderResponse, type ReaderTransport } from './readerTransport';
-import { collectionEvidence, requireResources, resourceUsable } from './readerPolicy';
+import { collectionEvidence, requireResources, resourceUsable, type ResourcePolicy } from './readerPolicy';
 import { createReaderIdentity, providerReference, readerScopePath, type ReaderIdentity } from './readerIdentity';
 import {
   decodeReaderMatches, decodeReaderStandings, decodeReaderBracket, decodeReaderSummary,
@@ -42,7 +43,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
   const now = deps.now ?? Date.now;
   const identities = createReaderIdentity(deps.read, now);
   async function request<T>(path: string, query: Record<string, string> | undefined, decode: (raw: unknown) => T,
-    scopes: Scopes, required: ReaderResourceName[], ttl = 0, maxAge?: Partial<Record<ReaderResourceName, number>>) {
+    scopes: Scopes, required: ReaderResourceName[], ttl = 0, policy?: ResourcePolicy) {
     deps.signal.throwIfAborted();
     const key = `${deps.cacheNamespace}:provider-v1:${path}?${new URLSearchParams(query)}`;
     // Core match clocks aggregate older observations. Revalidate these responses
@@ -50,7 +51,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
     const cached = ttl > 0 ? deps.cache.get(key) : undefined;
     const response = cached ?? await deps.read(path, query);
     deps.signal.throwIfAborted();
-    const evidence = requireResources(response.resources, scopes, required, now(), maxAge);
+    const evidence = requireResources(response.resources, scopes, required, now(), policy);
     if (required.includes('matches') || required.includes('bracket')) {
       try {
         const core = parseMatchFreshness(response.headers);
@@ -133,7 +134,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
     async getEditionTeams(rc) {
       const fromMatches = matchDerivedMembership(rc);
       const { body, evidence, save } = await request(`${readerScopePath(rc)}/teams`, undefined, decodeReaderEditionTeams,
-        { editionTeams: 'competition-season' }, ['editionTeams'], 15_000, { editionTeams: fromMatches ? 25 * 3_600_000 : 20 * 60_000 });
+        { editionTeams: 'competition-season' }, ['editionTeams'], 15_000, { maxAge: { editionTeams: fromMatches ? 25 * 3_600_000 : 20 * 60_000 } });
       collectionEvidence(evidence, 'editionTeams', body.length);
       unique(body.map(team => team.id));
       const teams = fromMatches ? body.filter(team => providerTeamId(team.id)) : body;
@@ -247,7 +248,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       const canonical = await canonicalTeam(rc, teamId);
       let loaded;
       try { loaded = await request(`${readerScopePath(rc)}/teams/${encodeURIComponent(canonical)}`, undefined, decodeReaderTeam,
-        { identity: 'team-season', matches: 'team-season', detail: 'team-season', standings: 'competition-season', squad: 'team-season', seasonStats: 'team-season' }, []); }
+        { identity: 'team-season', matches: 'team-season', detail: 'team-season', standings: 'competition-season', squad: 'team-season', seasonStats: 'team-season' }, [], 0, { archiveRosters: rc.season.archiveRosters }); }
       catch (error) { if (error instanceof ReaderFailure && error.status === 404) return null; throw error; }
       const { body, evidence } = loaded;
       if (requiresEditionEvidence(rc) && body.schedule.some(m => !datedInEdition(m.kickoff, rc.season))) throw new ReaderFailure('scope', false);
@@ -266,7 +267,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
     async getSquad(rc, teamId) {
       const canonical = await canonicalTeam(rc, teamId);
       const { body, evidence, save } = await request(`${readerScopePath(rc)}/teams/${encodeURIComponent(canonical)}/squad`, undefined, decodeReaderSquad,
-        { identity: 'team-season', squad: 'team-season', seasonStats: 'team-season' }, ['squad'], 15_000);
+        { identity: 'team-season', squad: 'team-season', seasonStats: 'team-season' }, ['squad'], 15_000, { archiveRosters: rc.season.archiveRosters });
       collectionEvidence(evidence, 'squad', body.length); unique(body.map(row => row.id));
       save();
       return body;
@@ -275,10 +276,22 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       const identity = (await identities.lookup(rc, 'player', 'espn', [athleteId], 'addressed')).get(athleteId)!;
       let loaded;
       try { loaded = await request(`${readerScopePath(rc)}/players/${encodeURIComponent(identity.canonicalId)}`, undefined, decodeReaderPlayer,
-        { identity: 'player', seasonStats: 'player-season', career: 'player', gameLog: 'player-season', participation: 'selection' }, [], 15_000); }
+        { identity: 'player', seasonStats: 'player-season', career: 'player', gameLog: 'player-season', participation: 'selection',
+          ...(rc.season.archiveRosters && { squad: 'team-season' as const }) },
+        rc.season.archiveRosters ? ['squad'] : [], 15_000, { archiveRosters: rc.season.archiveRosters }); }
       catch (error) { if (error instanceof ReaderFailure && error.status === 404) return null; throw error; }
       const { body, evidence } = loaded;
       if (body.id !== identity.canonicalId) throw new ReaderFailure('identity', false);
+      const stats = Object.fromEntries(body.totals.map(row => [row.name, row.value]));
+      if (rc.season.archiveRosters) {
+        if (evidence.resources.squad?.availability !== 'complete') throw new ReaderFailure('metadata');
+        if (!body.team) throw new ReaderFailure('scope');
+        const team = mappedTeam(await identities.teams(rc, [body.team.id]), body.team);
+        if (rosterTeamId && team.id !== rosterTeamId) throw new ReaderFailure('scope');
+        const profile = archiveRosterProfile(rc, team, { ...body, id: athleteId, stats });
+        loaded.save();
+        return { ...profile, readerResources: evidence };
+      }
       const gameLog = supportsResource(rc.season, 'participation') ? body.gameLog : [];
       const career = supportsResource(rc.season, 'career') ? body.career : [];
       unique(gameLog.map(row => row.eventId));
@@ -292,7 +305,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       const { playerSlug, ...fields } = body;
       void playerSlug; // The public slug comes from the roster index.
       const profile = { ...fields, totals: supportsResource(rc.season, 'squad')
-        ? profileTotals(Object.fromEntries(body.totals.map(row => [row.name, row.value])), body.position) : [],
+        ? profileTotals(stats, body.position) : [],
         gameLogLabel: gameLog.length ? body.gameLogLabel : '', id: athleteId, readerResources: evidence, team,
         career: career.map(row => websiteCareer({ ...row, teamId: row.teamId === null ? null : careerTeams.get(row.teamId) ?? null })),
         gameLog: gameLog.map(row => {

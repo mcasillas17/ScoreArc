@@ -127,3 +127,22 @@ func TestParticipationAggregateRejectsAnyFutureTimestamp(t *testing.T) {
 		t.Fatalf("minimum timestamp hid future completion: %+v", got)
 	}
 }
+
+func TestVerifiedArchiveRosterEvidenceSurvivesUnrelatedUnfinalizedMatches(t *testing.T) {
+	now := time.Now().UTC()
+	old := now.Add(-48 * time.Hour)
+	app := newTestApp(t, &fakeReaderStore{}, &fakeNewsReader{})
+	app.now = func() time.Time { return now }
+	scope := resourceScope{freshnessScope: freshnessScope{Competition: "world-cup", Season: "2002"}}
+	proof := &collectionEvidence{ObservedAt: &old, RowCount: 23}
+	for _, tc := range []struct{ route, resource, derivation string }{
+		{"editionTeams", "editionTeams", "derived"}, {"squad", "squad", "edition-roster"},
+	} {
+		scope.Route = tc.route
+		out, _, err := app.resourceMap(scope, resourceSnapshot{Unresolved: true, Squad: proof, Standings: proof})
+		r := out.Resources[tc.resource]
+		if err != nil || r.Status != "dormant" || r.Availability != "complete" || r.Derivation != tc.derivation || r.ObservedAt == nil {
+			t.Errorf("%s: %+v, %v", tc.route, r, err)
+		}
+	}
+}

@@ -283,7 +283,7 @@ export async function evaluate(options: {
               if (expectedRange && path.endsWith('/matches') && query?.range !== expectedRange) throw new ReaderFailure('scope', false);
               const response = await read(path, query);
               // Reuse the adapter's expiry rules even for optional evidence not carried in array DTOs.
-              request.resources = requireResources(response.resources, Object.fromEntries(Object.entries(response.resources.resources).map(([name, resource]) => [name, resource.scope])), [], now());
+              request.resources = requireResources(response.resources, Object.fromEntries(Object.entries(response.resources.resources).map(([name, resource]) => [name, resource.scope])), [], now(), { archiveRosters: rc?.season.archiveRosters });
               categories.push(...resourceCategories(request.resources)); return response;
             }),
           }) : createDataStore({

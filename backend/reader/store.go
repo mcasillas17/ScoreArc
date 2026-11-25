@@ -740,8 +740,13 @@ func (s *Store) teamSquad(
 	teamID, competition, season string,
 	asOf time.Time,
 ) ([]SquadPlayer, error) {
-	rows, err := s.db.Query(ctx, teamSquadSQL, teamID, competition, season,
-		asOf.UTC().Format(time.DateOnly), maxSquadRows+1)
+	// An archived roster does not establish the player's age at the tournament.
+	var ageDate *string
+	if !archiveRosterEdition(ctx) {
+		date := asOf.UTC().Format(time.DateOnly)
+		ageDate = &date
+	}
+	rows, err := s.db.Query(ctx, teamSquadSQL, teamID, competition, season, ageDate, maxSquadRows+1)
 	if err != nil {
 		return nil, err
 	}

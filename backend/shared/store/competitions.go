@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
@@ -33,6 +35,13 @@ func (s *Store) ReplaceStandings(
 		return err
 	}
 	defer rollback(ctx, tx)
+	if err := replaceStandings(ctx, tx, competitionID, seasonID, source, standings, canonical, editionVerified...); err != nil {
+		return err
+	}
+	return observationFailure(tx.Commit(ctx))
+}
+
+func replaceStandings(ctx context.Context, tx pgx.Tx, competitionID, seasonID, source string, standings []model.Standing, canonical []string, editionVerified ...bool) error {
 	if err := lockResourceCollection(ctx, tx, competitionID, seasonID, "standings", ""); err != nil {
 		return err
 	}
@@ -75,10 +84,7 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,now())`,
 			return err
 		}
 	}
-	if err := recordResourceObservation(ctx, tx, competitionID, seasonID, source, "standings", "", len(standings), editionVerified...); err != nil {
-		return err
-	}
-	return observationFailure(tx.Commit(ctx))
+	return recordResourceObservation(ctx, tx, competitionID, seasonID, source, "standings", "", len(standings), editionVerified...)
 }
 
 // canonicalStandings resolves every row's canonical team before a write opens

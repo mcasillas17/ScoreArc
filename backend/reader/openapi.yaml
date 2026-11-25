@@ -405,6 +405,9 @@ paths:
         Requires a canonical lowercase hyphenated player UUID. Malformed ids,
         provider ids and all query parameters return 400; an unknown canonical
         UUID returns 404. Identity is returned even without optional scoped rows.
+        Editions configured for verified archive rosters also require an observed
+        membership for this player. They withhold present-day age and career
+        and include team-season squad proof in X-ScoreArc-Resources.
         Totals and the latest five played matches belong only to the requested
         competition and season. Totals use stored aggregates, never sums of
         incomplete appearances. Game-log evidence excludes unused or uncertain
@@ -438,6 +441,14 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503":
+          description: The player's archived squad membership lacks verified edition evidence
+          headers:
+            X-ScoreArc-Resources: { $ref: "#/components/headers/Resources" }
+            Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/news:
     get:
@@ -738,14 +749,15 @@ components:
         a failed or absent source result cannot establish empty. Identity mixes
         curated and provider data with no complete observation clock. Current
         roster evidence is attributed to the configured season; the upstream
-        roster URL is not historical. Participation needs its own completion
+        roster URL is not historical. The edition-roster derivation requires a
+        verified season-addressed archive roster. Participation needs its own completion
         evidence, never merely a finalized score. Game logs describe held
         selected games and cannot prove missing career appearances.
       properties:
         status: { type: string, enum: [fresh, empty, stale, unavailable, dormant] }
         availability: { type: string, enum: [complete, empty, partial, pending, unavailable] }
         source: { type: string, enum: [espn, mixed] }
-        derivation: { type: string, enum: [direct, projection, derived, current-roster, retained, mixed, proxy] }
+        derivation: { type: string, enum: [direct, projection, derived, current-roster, edition-roster, retained, mixed, proxy] }
         scope: { type: string, enum: [competition-season, selection, team-season, player-season, player, match, competition] }
         observedAt:
           type: [string, "null"]

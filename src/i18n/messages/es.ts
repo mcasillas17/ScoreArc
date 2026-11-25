@@ -139,6 +139,7 @@ export const es = {
   'players.currentDirectory': 'Directorio actual de jugadores →',
   'players.metaTitle': (edition: string) => `Jugadores · ${edition}`,
   'players.metaDescription': (edition: string) => `Plantillas actuales de los equipos de ${edition}. Busca jugadores disponibles por nombre o equipo; la cobertura puede ser incompleta.`,
+  'players.archiveDirectoryDescription': (edition: string) => `Consulta las plantillas disponibles de ${edition}.`,
   'players.historicalMetaDescription': (edition: string) => `No hay plantillas históricas disponibles de ${edition}.`,
 
   'teams.title': 'Equipos',

@@ -22,6 +22,7 @@ const out = listCompetitionDefinitions().map((c) => ({
       label: s.label,
       monitored: s.monitored ?? false,
       publication: s.publication,
+      archiveRosters: s.archiveRosters,
       resources: s.resources?.filter(resource => supportsResource(s, resource)),
       providerYear: s.providerYear,
       startsAt: s.startsAt,

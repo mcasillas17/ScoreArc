@@ -16,6 +16,7 @@ describe('team identity crosswalk', () => {
     ['227', 'mex-america'], ['22415', 'mex-w-america'],
     ['360', 'eng-manchester-united'], ['20061', 'eng-w-manchester-united'],
     ['15364', 'usa-w-gotham-fc'],
+    ['656', 'nat-cmr'], ['658', 'nat-chn'], ['657', 'nat-nga'], ['454', 'nat-rus'],
   ])('preserves both directions of the curated %s identity', (ref, id) => {
     expect(canonicalTeamId(ref)).toBe(id);
     expect(providerTeamId(id)).toBe(ref);

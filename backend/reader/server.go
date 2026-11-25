@@ -39,6 +39,11 @@ func canRead(ctx context.Context, resource string) bool {
 	p, scoped := ctx.Value(editionPolicyKey{}).(editionPolicy)
 	return !scoped || p.edition.Supports(resource)
 }
+func archiveRosterEdition(ctx context.Context) bool {
+	p, _ := ctx.Value(editionPolicyKey{}).(editionPolicy)
+	return p.edition.ArchiveRosters
+}
+
 func visibleEntityScopes(ctx context.Context) []string {
 	p, _ := ctx.Value(editionPolicyKey{}).(editionPolicy)
 	return p.visible

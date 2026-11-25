@@ -130,6 +130,8 @@ func editionResourceMap(now time.Time, season config.Season, scope resourceScope
 	dormant := (now.Before(start) || !now.Before(end)) && !snapshot.Unresolved
 	out := resourceEnvelope{Version: 1, Resources: map[string]resourceMetadata{}}
 	resources := out.Resources
+	// Imported final rosters and their standings-backed entrant list are independent of match polling.
+	archiveRoster := season.Publication == "archive" && season.ArchiveRosters
 	identityScope := "competition-season"
 	if scope.TeamID != "" {
 		identityScope = "team-season"
@@ -212,7 +214,7 @@ func editionResourceMap(now time.Time, season config.Season, scope resourceScope
 				evidence = nil
 			}
 		}
-		r := collectionResource(now, evidence, ttl, "competition-season", "derived", dormant)
+		r := collectionResource(now, evidence, ttl, "competition-season", "derived", dormant || (archiveRoster && !scope.MatchMembership))
 		if scope.MatchMembership && r.Availability == "unavailable" && scope.MemberCount > 0 {
 			r.Availability = "partial"
 		}
@@ -229,9 +231,13 @@ func editionResourceMap(now time.Time, season config.Season, scope resourceScope
 		}
 		resources["identity"] = identity
 	}
-	if scope.Route == "squad" || scope.Route == "team" {
-		resources["squad"] = collectionResource(now, snapshot.Squad, 25*time.Hour, "team-season", "current-roster", dormant)
-		resources["seasonStats"] = aggregateResource(now, snapshot.Stats, 25*time.Hour, "team-season", dormant)
+	if scope.Route == "squad" || scope.Route == "team" || (scope.Route == "player" && archiveRoster) {
+		derivation := "current-roster"
+		if archiveRoster {
+			derivation = "edition-roster"
+		}
+		resources["squad"] = collectionResource(now, snapshot.Squad, 25*time.Hour, "team-season", derivation, dormant || archiveRoster)
+		resources["seasonStats"] = aggregateResource(now, snapshot.Stats, 25*time.Hour, "team-season", dormant || archiveRoster)
 		out.withholdRoster = scope.RequireRosterProof && resources["squad"].Availability == "unavailable"
 		if out.withholdRoster {
 			resources["seasonStats"] = unknownResource("team-season", "direct")
@@ -240,7 +246,7 @@ func editionResourceMap(now time.Time, season config.Season, scope resourceScope
 	}
 	if scope.Route == "player" {
 		resources["identity"] = identity
-		resources["seasonStats"] = aggregateResource(now, snapshot.Stats, 25*time.Hour, "player-season", dormant)
+		resources["seasonStats"] = aggregateResource(now, snapshot.Stats, 25*time.Hour, "player-season", dormant || archiveRoster)
 		resources["career"] = collectionResource(now, &collectionEvidence{ObservedAt: snapshot.Career.ObservedAt, RowCount: snapshot.Career.Count}, 32*24*time.Hour, "player", "direct", false)
 		if snapshot.Career.Count > maxPlayerCareer {
 			r := resources["career"]
@@ -312,10 +318,14 @@ func (a *App) attachResourceEvidence(w http.ResponseWriter, r *http.Request, rea
 	_, edition, ok := a.resolve(scope.Competition, scope.Season)
 	if ok {
 		if scope.Route == "squad" || scope.Route == "team" {
-			scope.RequireRosterProof = edition.Supports("squad") && (edition.MatchDerivedTeams() || a.registry.ActiveEdition(scope.Competition, edition))
+			scope.RequireRosterProof = edition.Supports("squad") && (edition.MatchDerivedTeams() || a.registry.ActiveEdition(scope.Competition, edition) || edition.ArchiveRosters)
 		}
 		if scope.Degraded == nil {
 			scope.Degraded = map[string]bool{}
+		}
+		if scope.Route == "player" && edition.ArchiveRosters {
+			scope.RequireRosterProof = true
+			scope.Degraded["career"] = true
 		}
 		for name, resource := range map[string]string{"matches": "scores", "detail": "summary", "standings": "standings", "squad": "squad", "seasonStats": "squad", "career": "career", "gameLog": "participation", "participation": "participation"} {
 			if !edition.Supports(resource) {
@@ -446,7 +456,7 @@ func (s *Store) Resources(ctx context.Context, scope resourceScope) (resourceSna
 	if scope.Route == "leaders" || scope.Route == "top-scorers" {
 		leaders = resourceLeadersSQL
 	}
-	if (scope.Route == "squad" || scope.Route == "team") && !scope.Degraded["squad"] {
+	if (scope.Route == "squad" || scope.Route == "team" || scope.RequireRosterProof) && !scope.Degraded["squad"] {
 		squad = resourceSquadSQL + ")"
 		if scope.RequireRosterProof {
 			squad = resourceSquadSQL + resourceEditionProofSQL + ")"

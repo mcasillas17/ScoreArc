@@ -250,3 +250,9 @@ it('keeps season counts unavailable when ESPN supplies only a new statistic', ()
   } } }];
   expect(mapTeamRoster({ athletes })[0]?.stats).toBeNull();
 });
+
+it('withholds present-day age for a verified historical roster', () => {
+  const roster = { athletes: [{ id: '19278', displayName: 'Davor Vugrinec', age: 51, dateOfBirth: '1975-03-24T07:00Z' }] };
+  expect(mapTeamRoster(roster, null)[0].age).toBeNull();
+  expect(mapTeamRoster(roster)[0].age).toBe(51);
+});

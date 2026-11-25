@@ -23,7 +23,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
   const pathname = `/c/${rc.competition.id}/${rc.season.id}/players`;
   const title = t('players.metaTitle', edition);
-  const description = t(rc.season.publication !== 'archive' && rc.season.id === rc.competition.currentSeasonId ? 'players.metaDescription' : 'players.historicalMetaDescription', edition);
+  const description = rc.season.archiveRosters
+    ? t('players.archiveDirectoryDescription', edition)
+    : t(rc.season.publication !== 'archive' && rc.season.id === rc.competition.currentSeasonId ? 'players.metaDescription' : 'players.historicalMetaDescription', edition);
   return {
     title,
     description,
@@ -38,11 +40,11 @@ export default async function PlayersPage({ params }: Params) {
   const rc = resolveResource(comp, season, 'players');
   if (!rc) notFound();
   const t = getTranslator(locale, comp);
-  const historical = rc.season.publication === 'archive' || rc.season.id !== rc.competition.currentSeasonId;
+  const unavailableArchive = !rc.season.archiveRosters && (rc.season.publication === 'archive' || rc.season.id !== rc.competition.currentSeasonId);
   const current = rc.competition.seasons[rc.competition.currentSeasonId];
   const currentDirectory = current && current.publication !== 'archive' && current.id !== rc.season.id && supportsResource(current, 'players');
   let directory: Awaited<ReturnType<typeof competitionPlayerIndex>>['directory'] | null = null;
-  if (!historical) {
+  if (!unavailableArchive) {
     try { directory = (await competitionPlayerIndex(rc)).directory; }
     catch { /* The unavailable state below must not claim an empty directory. */ }
   }
@@ -51,11 +53,11 @@ export default async function PlayersPage({ params }: Params) {
     <main className="main tsp">
       <header className="tsp-head">
         <h1 className="tsp-title">{t('nav.players')}</h1>
-        {!historical && directory && directory.teamsWithRoster < directory.totalTeams && directory.players.length > 0 && (
+        {!unavailableArchive && directory && directory.teamsWithRoster < directory.totalTeams && directory.players.length > 0 && (
           <p className="tsp-sub">{t('players.coverage', directory.teamsWithRoster, directory.totalTeams)}</p>
         )}
       </header>
-      {historical ? (
+      {unavailableArchive ? (
         <div>
           <p className="tsp-empty">{t('players.historical')}</p>
           {currentDirectory && <p className="tsp-all"><Link href={`/${locale}/c/${rc.competition.id}/${rc.competition.currentSeasonId}/players`}>

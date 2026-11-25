@@ -107,7 +107,7 @@ async function fetchSquad(rc: CompetitionSeason, teamId: string, fetchJson: Scor
   });
   const count = verifyRosterEdition(raw, rc, teamId);
   if (count > MAX_SQUAD_PLAYERS) throw new EspnEditionError('partial', 'roster');
-  const squad = mapTeamRoster(raw, asOfDate);
+  const squad = mapTeamRoster(raw, rc.season.archiveRosters ? null : asOfDate);
   if (squad.length !== count || squad.some(player => !providerReference(player.id) || !player.name.trim()) ||
       new Set(squad.map(player => player.id)).size !== count) throw new EspnEditionError('partial', 'roster');
   return squad;
@@ -300,8 +300,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     return groups;
   }
 
-  // Historical rosters keep the provider's age for that edition. Current
-  // roster ages roll over together at midnight UTC, including cached pages.
+  // Current roster ages roll over together at midnight UTC, including cached pages.
   const rosterDate = (rc: CompetitionSeason) => rc.season.publication === 'archive' ? undefined : new Date(now()).toISOString().slice(0, 10);
   async function loadSquad(rc: CompetitionSeason, teamId: string, asOfDate = rosterDate(rc), signal?: AbortSignal): Promise<SquadPlayer[]> {
     const k = key(rc, `squad:${teamId}:${asOfDate ?? 'archive'}`);
@@ -519,7 +518,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       try {
         return await loadSquad(rc, teamId);
       } catch (error) {
-        if (deps.propagateUnavailable) throw error;
+        if (deps.propagateUnavailable || rc.season.archiveRosters) throw error;
         healthContext().onDependencyFailure?.('espn', comparisonFault(error));
         return [];
       }
@@ -671,7 +670,7 @@ const espnCache = new TtlCache<unknown>();
 // function instances. Catch provider failures outside the cache so a retry can recover.
 const loadEspnSquad = unstable_cache(
   (rc: CompetitionSeason, teamId: string, asOfDate: string | undefined) => fetchSquad(rc, teamId, boundedFetchJson, asOfDate),
-  ['espn-squad-v4'],
+  ['espn-squad-v5'],
   { revalidate: 300 },
 );
 export const espnDataStore = createDataStore({ fetchJson: boundedFetchJson, cache: espnCache, loadSquad: loadEspnSquad });
