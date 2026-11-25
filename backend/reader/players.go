@@ -95,7 +95,15 @@ func (a *App) handlePlayer(w http.ResponseWriter, r *http.Request) {
 	for _, game := range player.GameLog {
 		scope.GameIDs = append(scope.GameIDs, game.EventID)
 	}
-	if !a.attachResources(w, r, reader, finish, scope) {
+	if edition.ArchiveRosters && player.Team != nil {
+		scope.TeamID = player.Team.ID
+	}
+	resources, ok := a.attachResourceEvidence(w, r, reader, finish, scope)
+	if !ok {
+		return
+	}
+	if resources.withholdRoster {
+		writeError(w, http.StatusServiceUnavailable, "archived membership unavailable")
 		return
 	}
 	cacheFor(w, 60)
@@ -104,9 +112,9 @@ func (a *App) handlePlayer(w http.ResponseWriter, r *http.Request) {
 
 const playerIdentitySQL = `
 SELECT p.id::text,coalesce(p.known_as,p.full_name),
- CASE WHEN p.birth_date <= (current_timestamp AT TIME ZONE 'UTC')::date
+ CASE WHEN NOT $6 AND p.birth_date <= (current_timestamp AT TIME ZONE 'UTC')::date
  THEN extract(year FROM age((current_timestamp AT TIME ZONE 'UTC')::date,p.birth_date))::int END,
- coalesce(sm.position,p.position,''),nullif(p.nationality,''),p.flag_url,p.headshot_url,sm.shirt_number::text,
+ coalesce(sm.position,CASE WHEN NOT $6 THEN p.position END,''),nullif(p.nationality,''),CASE WHEN NOT $6 THEN p.flag_url END,p.headshot_url,sm.shirt_number::text,
  sm.player_id IS NOT NULL AND (` + rosterStatsRetainedSQL + `),
  t.id,t.name,t.abbr,t.crest_url,coalesce(sn.label||' '||c.short_name||' Stats',''),
  (SELECT count(*) FROM (SELECT 1 FROM appearance a JOIN match m ON m.id=a.match_id
@@ -117,7 +125,7 @@ LEFT JOIN player_season_stat st ON $5 AND st.player_id=p.id AND st.competition_i
 LEFT JOIN LATERAL (SELECT * FROM squad_membership
  WHERE $5 AND player_id=p.id AND competition_id=$2 AND season_id=$3
  ORDER BY updated_at DESC,(team_id=st.team_id) DESC NULLS LAST,team_id LIMIT 1) sm ON true
-LEFT JOIN team t ON t.id=coalesce(sm.team_id,st.team_id)
+LEFT JOIN team t ON t.id=coalesce(sm.team_id,CASE WHEN NOT $6 THEN st.team_id END)
 LEFT JOIN competition c ON c.id=$2
 LEFT JOIN season sn ON sn.competition_id=$2 AND sn.id=$3
 WHERE p.id=$1 AND ` + playerVisibleSQL
@@ -129,7 +137,7 @@ func (s *Store) Player(ctx context.Context, id, competition, season string) (*Pl
 	p := &PlayerProfile{Totals: []PlayerSeasonTotal{}, GameLog: []GameLogRow{}, Career: []CareerStint{}, GameLogLabel: "Last 5 Matches"}
 	var teamID, name, abbr, crest *string
 	var candidates int
-	err := s.db.QueryRow(ctx, playerIdentitySQL, id, competition, season, visibleEntityScopes(ctx), canRead(ctx, "squad")).Scan(&p.ID, &p.Name, &p.Age, &p.Position, &p.Nationality, &p.FlagURL, &p.HeadshotURL, &p.Jersey, &p.TotalsRetained, &teamID, &name, &abbr, &crest, &p.SeasonLabel, &candidates)
+	err := s.db.QueryRow(ctx, playerIdentitySQL, id, competition, season, visibleEntityScopes(ctx), canRead(ctx, "squad"), archiveRosterEdition(ctx)).Scan(&p.ID, &p.Name, &p.Age, &p.Position, &p.Nationality, &p.FlagURL, &p.HeadshotURL, &p.Jersey, &p.TotalsRetained, &teamID, &name, &abbr, &crest, &p.SeasonLabel, &candidates)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -148,7 +156,7 @@ func (s *Store) Player(ctx context.Context, id, competition, season string) (*Pl
 			return nil, err
 		}
 	}
-	if canRead(ctx, "career") {
+	if canRead(ctx, "career") && !archiveRosterEdition(ctx) {
 		p.Career, err = s.playerCareer(ctx, id)
 		if err != nil {
 			return nil, err

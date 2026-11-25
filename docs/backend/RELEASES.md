@@ -1,6 +1,9 @@
 # Production release runbook
 
-**ESPN roster and biography feed monitoring requires migration 0031 before merge.** Production migration 0031 is pending. Start at clean version 30 and coordinate the reader and ingester release with the database owner. Follow the [migration 0031 procedure](#migration-0031-espn-feed-changes).
+Production reached clean schema 31 on the evening of November 24, 2026 Pacific.
+The ingester and reader releases for `6ca0fe0` finished at 8:42 and 8:43 p.m.
+Pacific respectively (November 25 UTC). The 2002 roster
+import uses the existing schema. [Production release run](https://github.com/mcasillas17/ScoreArc/actions/runs/45532578056)
 
 **Earlier migrations.** Migration `0030_player_profile_media` followed clean version
 29 and added nullable player media and biography retry-scheduling columns.
@@ -389,6 +392,55 @@ applied migration file and must not drop a schema dependency under a serving
 binary; see [rollback compatibility](#rollback-compatibility). Missing Vercel
 credentials block frontend rollback too:
 restore the deployment identity, not a raw dashboard bypass.
+
+## 2002 World Cup rosters
+
+The manual `archive-rosters` command imports the men's 2002 World Cup into the
+existing standings, identity, squad, statistics, and resource-observation tables.
+The normal release deploys the reader and team seed. Applying archive data is a
+separate operator action. The command has no experiment settings.
+
+1. From the release checkout, run the provider preview. It has no database
+   dependency. Check the JSON counts and the named HTTP 404 responses.
+
+   ```sh
+   cd backend
+   go run ./cmd/archive-rosters
+   ```
+
+   On November 24 the preview validated 32 entrants and 688 players on 30
+   rosters. China's and Senegal's season-specific endpoints returned 404.
+   A valid response on a later run can fill either gap. An unexpected error
+   on a previously covered team fails the import.
+
+2. For an authorized apply, use the clean schema required by the release and
+   the least-privilege ingester login in `POOLED_DSN`. First verify that the
+   upgraded ingester has applied the curated team seed, including Cameroon,
+   China, Nigeria and Russia. Then run `go run ./cmd/archive-rosters --apply`
+   from `backend`. Fetching and validation finish before the database
+   transaction begins. After a failure, correct the reported problem and rerun
+   the same command. An unavailable roster keeps its previous accepted facts,
+   if any.
+
+3. Verify the 32 entrants at `/v1/competitions/world-cup/2002/teams`.
+   Croatia's `/teams/nat-cro/squad` under that prefix includes ESPN athlete
+   `19278`. In the `X-ScoreArc-Resources` header, its squad has
+   `derivation=edition-roster` and `availability=complete`. A never-observed
+   roster has `availability=unavailable` and a null observation time.
+   Check `/en/c/world-cup/2002/player/davor-vugrinec` for Croatia, shirt 7,
+   one start and one substitute appearance. The edition's `/players` page
+   reports the number of teams with roster coverage and searches those players.
+
+4. In [Grafana](https://grafana.scorearc.futbol/d/scorearc-operations), watch
+   reader attempts and resource evidence for `getEditionTeams`, `getSquad`
+   and `getPlayer`. Use the sampled frontend event's competition and season
+   to isolate `world-cup/2002`. A known player can resolve from an accepted
+   squad while a missing team still makes the comparison inconclusive.
+
+The recorded replay runs with `npm ci` installed at repository root and
+`go test -race ./reader -run TestWorldCup2002ArchiveReader -count=1` from
+`backend` with Docker available. It exercises the source, Postgres, the Go HTTP
+handlers, and the website lookup.
 
 ## Migration 0031 (ESPN feed changes)
 

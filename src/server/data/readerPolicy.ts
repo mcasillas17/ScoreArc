@@ -2,6 +2,11 @@ import type { ReaderResource, ReaderResourceName, ReaderResources } from '@/lib/
 import { healthContext } from '@/lib/telemetry/http';
 import { ReaderFailure } from './readerTransport';
 
+export interface ResourcePolicy {
+  maxAge?: Partial<Record<ReaderResourceName, number>>;
+  archiveRosters?: boolean;
+}
+
 type Scopes = Partial<Record<ReaderResourceName, ReaderResource['scope']>>;
 const derivation: Partial<Record<ReaderResourceName, ReaderResource['derivation']>> = { editionTeams: 'derived', identity: 'mixed', detail: 'retained', squad: 'current-roster', bracket: 'derived', gameLog: 'derived', participation: 'derived' };
 const expiry: Partial<Record<ReaderResourceName, number>> = {
@@ -11,15 +16,16 @@ const expiry: Partial<Record<ReaderResourceName, number>> = {
 
 /** Re-evaluate clocks even when bytes came from the source-specific cache. */
 export function requireResources(evidence: ReaderResources, scopes: Scopes, required: ReaderResourceName[], now: number,
-  maxAge: Partial<Record<ReaderResourceName, number>> = {}): ReaderResources {
+  policy: ResourcePolicy = {}): ReaderResources {
   const aged: ReaderResources = structuredClone(evidence);
   for (const [name, scope] of Object.entries(scopes) as [ReaderResourceName, ReaderResource['scope']][]) {
     const resource = aged.resources[name];
-    if (!resource || resource.scope !== scope || resource.source !== (name === 'identity' ? 'mixed' : 'espn') || resource.derivation !== (derivation[name] ?? 'direct')) throw new ReaderFailure('metadata');
+    const expectedDerivation = name === 'squad' && policy.archiveRosters ? 'edition-roster' : derivation[name] ?? 'direct';
+    if (!resource || resource.scope !== scope || resource.source !== (name === 'identity' ? 'mixed' : 'espn') || resource.derivation !== expectedDerivation) throw new ReaderFailure('metadata');
     for (const time of [resource.observedAt, resource.finalizedAt]) {
       if (time !== null && (!Number.isFinite(Date.parse(time)) || Date.parse(time) > now)) throw new ReaderFailure('metadata');
     }
-    const ttl = maxAge[name] ?? expiry[name];
+    const ttl = policy.maxAge?.[name] ?? expiry[name];
     if (ttl && (resource.status === 'fresh' || resource.status === 'empty')) {
       if (resource.observedAt === null) throw new ReaderFailure('metadata');
       if (now - Date.parse(resource.observedAt) >= ttl) resource.status = 'stale';

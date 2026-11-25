@@ -184,7 +184,8 @@ export function mapTeamProfile(raw: unknown): TeamIdentity | null {
 
 // Roster DOBs include a provider-local midnight. A birthday is a calendar
 // date: the reader counts whole years on the request's UTC date.
-function rosterAge(athlete: { dateOfBirth?: unknown; age?: unknown }, asOfDate?: string): number | null {
+function rosterAge(athlete: { dateOfBirth?: unknown; age?: unknown }, asOfDate?: string | null): number | null {
+  if (asOfDate === null) return null; // A year-addressed roster can still carry today's age.
   if (!asOfDate || !isMatchKickoff(athlete.dateOfBirth)) return num(athlete.age);
   const birthday = athlete.dateOfBirth.slice(0, 10);
   if (birthday > asOfDate) return null;
@@ -198,7 +199,7 @@ function rosterAge(athlete: { dateOfBirth?: unknown; age?: unknown }, asOfDate?:
  * Athletes arrive flat on this payload, but the same endpoint groups them under
  * athletes[].items[] for some competitions, so both shapes are accepted.
  */
-export function mapTeamRoster(raw: unknown, asOfDate?: string): SquadPlayer[] {
+export function mapTeamRoster(raw: unknown, asOfDate?: string | null): SquadPlayer[] {
   try {
     const top: any[] = (raw as any)?.athletes ?? [];
     const athletes: any[] = top.some((entry) => Array.isArray(entry?.items))

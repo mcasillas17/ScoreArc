@@ -1,7 +1,7 @@
 import { completeCollectionMetadata } from './espn-collection';
 import { datedInEdition, object } from './espn-edition';
 import type { CompetitionSeason } from '../competitions';
-import type { CareerStint, GameLogRow, PlayerProfile, PlayerSeasonTotal, SquadPlayer, Team } from '../types';
+import type { CareerStint, GameLogRow, PlayerProfile, PlayerSeasonStats, PlayerSeasonTotal, SquadPlayer, Team } from '../types';
 
 /** Profile without the blocks that come from the other two endpoints. */
 type AthleteIdentity = Omit<PlayerProfile, 'gameLog' | 'gameLogLabel' | 'career' | 'news'>;
@@ -12,7 +12,11 @@ function num(v: unknown): number | null {
 }
 
 // The athlete endpoints return today's club and recent matches even with a season query.
-export function archiveRosterProfile(rc: CompetitionSeason, team: Team, player: SquadPlayer): PlayerProfile {
+export function archiveRosterProfile(rc: CompetitionSeason, team: Team,
+  player: Pick<SquadPlayer, 'id' | 'name' | 'position' | 'nationality' | 'headshotUrl'> & {
+    jersey: string | number | null; stats: Partial<PlayerSeasonStats> | null;
+  },
+): PlayerProfile {
   const totals: PlayerSeasonTotal[] = [];
   for (const [name, label] of [['totalGoals', 'Goals'], ['goalAssists', 'Assists']] as const) {
     const value = player.stats?.[name];

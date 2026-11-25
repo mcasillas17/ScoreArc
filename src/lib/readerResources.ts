@@ -4,7 +4,7 @@ const names = ['matches', 'calendar', 'editionTeams', 'bracket', 'standings', 'l
 const statuses = ['fresh', 'empty', 'stale', 'unavailable', 'dormant'] as const;
 const availabilities = ['complete', 'empty', 'partial', 'pending', 'unavailable'] as const;
 const sources = ['espn', 'mixed'] as const;
-const derivations = ['direct', 'projection', 'derived', 'current-roster', 'retained', 'mixed', 'proxy'] as const;
+const derivations = ['direct', 'projection', 'derived', 'current-roster', 'edition-roster', 'retained', 'mixed', 'proxy'] as const;
 const scopes = ['competition-season', 'selection', 'team-season', 'player-season', 'player', 'match', 'competition'] as const;
 
 export type ReaderResourceName = typeof names[number];

@@ -1890,6 +1890,16 @@
     }
   },
   {
+    "id": "nat-chn",
+    "kind": "national",
+    "name": "China",
+    "abbr": "CHN",
+    "country": "chn",
+    "refs": {
+      "espn": "658"
+    }
+  },
+  {
     "id": "nat-civ",
     "kind": "national",
     "name": "Ivory Coast",
@@ -1897,6 +1907,16 @@
     "country": "civ",
     "refs": {
       "espn": "4789"
+    }
+  },
+  {
+    "id": "nat-cmr",
+    "kind": "national",
+    "name": "Cameroon",
+    "abbr": "CMR",
+    "country": "cmr",
+    "refs": {
+      "espn": "656"
     }
   },
   {
@@ -2510,6 +2530,16 @@
     }
   },
   {
+    "id": "nat-nga",
+    "kind": "national",
+    "name": "Nigeria",
+    "abbr": "NGA",
+    "country": "nga",
+    "refs": {
+      "espn": "657"
+    }
+  },
+  {
     "id": "nat-nir",
     "kind": "national",
     "name": "Northern Ireland",
@@ -2617,6 +2647,16 @@
     "country": "rsa",
     "refs": {
       "espn": "467"
+    }
+  },
+  {
+    "id": "nat-rus",
+    "kind": "national",
+    "name": "Russia",
+    "abbr": "RUS",
+    "country": "rus",
+    "refs": {
+      "espn": "454"
     }
   },
   {

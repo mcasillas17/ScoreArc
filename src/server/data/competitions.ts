@@ -79,6 +79,8 @@ export interface Zone {
 // editions, '2025-26' for cross-year leagues, '2026-apertura' / '2026-clausura'
 // for split leagues like Liga MX.
 export interface Season {
+  /** Historical roster reads require a verified, season-addressed archive capture. */
+  archiveRosters?: boolean;
   publication?: 'candidate' | 'staging' | 'live' | 'archive';
   resources?: EditionResource[];
   monitored?: boolean;
@@ -250,7 +252,7 @@ export const COMPETITIONS: Record<string, Competition> = {
       // bracket mapper corrects it by event id (see EVENT_SLUG_OVERRIDE).
       '2010': pastWcSeason('2010', '20100626-20100711'),
       '2006': pastWcSeason('2006', '20060624-20060709'),
-      '2002': pastWcSeason('2002', '20020615-20020630'),
+      '2002': { ...pastWcSeason('2002', '20020615-20020630'), archiveRosters: true },
       '1998': pastWcSeason('1998', '19980627-19980712'),
     },
   },

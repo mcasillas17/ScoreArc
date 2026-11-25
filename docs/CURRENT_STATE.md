@@ -3,6 +3,18 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
+### November 24 evening · 2002 World Cup archive
+
+The comparison remains configured at 1%. Through 9:44 p.m. Pacific, one
+2002 World Cup player page accounted for 34 of the 42 unavailable sampled
+reads since the collector update. At inspection, production held no 2002
+squad memberships. [Grafana window](https://grafana.scorearc.futbol/d/scorearc-operations?from=1795581823000&to=1795585470000)
+
+The manual importer reproduced 32 entrants, 30 available squads, and 688 players
+in local Postgres. China and Senegal returned 404 for their historical rosters.
+Production coverage for this edition requires an operator to apply the import
+and verify the reader. [2002 roster import and verification](backend/RELEASES.md#2002-world-cup-rosters)
+
 ### November 24 production comparison audit
 
 From activation at **22:32:28 UTC on November 22** through **09:34:54 UTC on November 24**,

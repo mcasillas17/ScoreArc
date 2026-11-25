@@ -16,6 +16,7 @@ type Squad struct {
 type SquadMember struct {
 	SourceID    string
 	FullName    string
+	DisplayName string // Observed roster name used by the 2002 archive.
 	Number      *int
 	Position    string
 	BirthDate   *time.Time

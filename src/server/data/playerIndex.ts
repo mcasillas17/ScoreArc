@@ -23,6 +23,12 @@ interface PlayerIndex {
   byProvider: Map<string, string>;
 }
 
+// Once the edition's entrant list is verified, a team roster 404 is a coverage gap.
+function missingArchiveRoster(error: unknown): boolean {
+  return (error instanceof ReaderFailure && error.reason === 'unavailable') ||
+    (error instanceof Error && 'status' in error && error.status === 404);
+}
+
 /** Resolve and load together so fallback repeats the complete slug lookup. */
 export function loadPlayerBySlug(
   rc: CompetitionSeason,
@@ -36,6 +42,10 @@ export function loadPlayerBySlug(
     let unavailable: { error: unknown } | undefined;
     const index = await competitionPlayerIndex(rc, source, signal, error => {
       signal?.throwIfAborted();
+      if (rc.season.archiveRosters && missingArchiveRoster(error)) {
+        unavailable ??= { error };
+        return;
+      }
       if (!isSampledComparisonStore(source)) throw error;
       if (error instanceof ReaderFailure) {
         if (error.reason === 'budget' || error.reason === 'timeout') throw error;
@@ -86,8 +96,8 @@ export function loadMatchSummaryWithSlugs(
  *
  * Built from the squad rosters the team pages already fetch -- one roster
  * request per club on a cold cache, nothing on a warm one. A club whose
- * roster is unavailable contributes no players rather than failing the
- * index; its players' pages 404 until the roster returns, which is honest.
+ * archived roster is missing contributes no players to the directory, and
+ * the coverage count reports how many entrants supplied a roster.
  *
  * Membership failures propagate so a temporary upstream outage cannot turn
  * a bookmarked player page into a 404.
@@ -107,8 +117,8 @@ export async function competitionPlayerIndex(
     for (let i = 0; i < teams.length; i += 4) {
       squads.push(...await Promise.all(teams.slice(i, i + 4).map(async team => ({
         team, squad: await source.getSquad(rc, team.id).catch(error => {
-          if (!onSquadError) throw error;
-          onSquadError(error);
+          if (onSquadError) onSquadError(error);
+          else if (!rc.season.archiveRosters || !missingArchiveRoster(error)) throw error;
           return [];
         }),
       }))));

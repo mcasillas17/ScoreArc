@@ -45,6 +45,7 @@
         "label": "2002",
         "monitored": false,
         "publication": "archive",
+        "archiveRosters": true,
         "resources": [
           "scores",
           "standings",

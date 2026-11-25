@@ -43,10 +43,11 @@ func TestOpenAPIPlayerRoute(t *testing.T) {
 			}
 		}
 	}
-	if len(operation.Responses.Map()) != 6 {
-		t.Fatalf("expected 200/400/404/405/429/500 responses, got %v", operation.Responses.Map())
+	statuses := []int{200, 400, 404, 405, 429, 500, 503}
+	if len(operation.Responses.Map()) != len(statuses) {
+		t.Fatalf("expected player responses %v, got %v", statuses, operation.Responses.Map())
 	}
-	for _, status := range []int{200, 400, 404, 405, 429, 500} {
+	for _, status := range statuses {
 		response := operation.Responses.Status(status)
 		if response == nil || response.Value == nil {
 			t.Fatalf("missing player response %d", status)

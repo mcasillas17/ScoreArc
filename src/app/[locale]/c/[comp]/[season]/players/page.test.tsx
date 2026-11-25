@@ -71,6 +71,19 @@ describe('player directory page', () => {
 });
 
 
+it('opens the 2002 archive directory and reports the missing team coverage', async () => {
+  index(32, 30);
+  const archive = { ...params, season: '2002' };
+  const page = renderToStaticMarkup(await Page({ params: archive }));
+  expect(page).toContain('Roster data from 30 of 32 listed teams');
+  expect(page).toContain('Search results');
+  for (const locale of ['en', 'es']) {
+    const meta = await generateMetadata({ params: { ...archive, locale } });
+    expect(meta.description).toContain('2002');
+    expect(meta.description).not.toMatch(/not available|no hay|current rosters|plantillas actuales/i);
+  }
+});
+
 it.each(['en', 'es'])('shares truthful current and historical directory metadata in %s', async locale => {
   for (const season of ['2026', '2018']) {
     const meta = await generateMetadata({ params: { ...params, locale, season } });

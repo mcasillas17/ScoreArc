@@ -151,6 +151,7 @@ export const en = {
   'players.currentDirectory': 'Current player directory →',
   'players.metaTitle': (edition: string) => `Players · ${edition}`,
   'players.metaDescription': (edition: string) => `Current rosters for teams listed in ${edition}. Search available players by name or team; coverage may be incomplete.`,
+  'players.archiveDirectoryDescription': (edition: string) => `Search the available player rosters for ${edition}.`,
   'players.historicalMetaDescription': (edition: string) => `Historical player rosters are not available for ${edition}.`,
 
   'teams.title': 'Teams',
