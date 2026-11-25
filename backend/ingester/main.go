@@ -136,10 +136,12 @@ func run() int {
 		log.Warn("R2 raw archive disabled; the play stream will NOT be kept",
 			"hint", "set R2_RAW_BUCKET and the R2 credentials via fly secrets")
 	}
+	feed := newFeedMonitor(ctx, repo.RecordFeedChanges, log)
+	defer feed.close()
 	worker := &runner{
 		registry:          registry,
 		competitions:      registry.Active("scores"),
-		source:            source.NewESPN(espn.NewWithOptions(espn.Options{HTTPLog: httpLog})),
+		source:            source.NewObservedESPN(espn.NewWithOptions(espn.Options{HTTPLog: httpLog}), feed.observe),
 		repo:              repo,
 		mirror:            mirror,
 		archive:           archive,

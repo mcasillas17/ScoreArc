@@ -34,6 +34,7 @@ describe('sampled reader comparison', () => {
     expect(s.reader.getEditionTeams).not.toHaveBeenCalled();
     expect(s.espn.getNews).toHaveBeenCalledWith(rc, true);
     expect(s.events).toContainEqual(expect.objectContaining({ type: 'operation', cohort: 'control', served: 'espn' }));
+    expect(s.events.some(e => e.type === 'read' && e.readerResult !== undefined)).toBe(false);
   });
 
   it('starts both sources together, draws once for a join and serves the actual reader value on agreement', async () => {
@@ -60,7 +61,7 @@ describe('sampled reader comparison', () => {
     expect(result[1]).toEqual([]);
     expect(s.espn.getEditionTeams).toHaveBeenCalledTimes(1);
     expect(s.espn.getUpcoming).toHaveBeenCalledTimes(1);
-    expect(s.events).toContainEqual(expect.objectContaining({ type: 'read', endpoint: 'getUpcoming', outcome: 'mismatch' }));
+    expect(s.events).toContainEqual(expect.objectContaining({ type: 'read', endpoint: 'getUpcoming', outcome: 'mismatch', readerResult: 'usable' }));
   });
 
   it('reports reader status and uses ESPN even when the reader error ordinarily forbids fallback', async () => {
@@ -77,7 +78,7 @@ describe('sampled reader comparison', () => {
     s.espn.getEditionTeams.mockRejectedValue(error);
     s.reader.getEditionTeams.mockRejectedValue(new ReaderFailure('http', true, 429));
     await expect(s.store.getEditionTeams(rc)).rejects.toBe(error);
-    expect(s.events).toContainEqual(expect.objectContaining({ outcome: 'inconclusive', espnStatus: 503, readerStatus: 429 }));
+    expect(s.events).toContainEqual(expect.objectContaining({ outcome: 'inconclusive', espnStatus: 503, readerStatus: 429, readerResult: 'unavailable' }));
     expect(s.events).toContainEqual(expect.objectContaining({ type: 'operation', served: 'error' }));
   });
 
@@ -86,7 +87,7 @@ describe('sampled reader comparison', () => {
     const error = Object.assign(new Error('private-url-and-body'), { status: 502 });
     s.espn.getEditionTeams.mockRejectedValue(error);
     await expect(s.store.getEditionTeams(rc)).rejects.toBe(error);
-    expect(s.events).toContainEqual(expect.objectContaining({ outcome: 'inconclusive', espnStatus: 502 }));
+    expect(s.events).toContainEqual(expect.objectContaining({ outcome: 'inconclusive', espnStatus: 502, readerResult: 'usable' }));
     expect(JSON.stringify(s.events)).not.toContain(error.message);
   });
 
@@ -126,7 +127,7 @@ it('records swallowed upstream errors by route and HTTP status without leaking a
   });
   await store.getEditionTeams(rc);
   expect(hits).toContainEqual(expect.objectContaining({ dependency: 'reader', endpoint: '/v1/competitions/{comp}/{season}/identities', outcome: 'http_error', status: 503 }));
-  expect(events).toContainEqual(expect.objectContaining({ type: 'read', endpoint: 'getEditionTeams', outcome: 'inconclusive' }));
+  expect(events).toContainEqual(expect.objectContaining({ type: 'read', endpoint: 'getEditionTeams', outcome: 'inconclusive', readerResult: 'unavailable' }));
   expect(events).toContainEqual(expect.objectContaining({ type: 'operation', served: 'espn', decision: 'inconclusive' }));
   expect(new Set(events.map(e => e.sampleId)).size).toBe(1);
   expect(events.every(e => e.policy === NORMALIZATION_VERSION)).toBe(true);
@@ -141,6 +142,28 @@ it('validates the configured percentage only in compare mode and zero constructs
   expect(configure('compare', '0')).toBe(espn);
   expect(configure('espn', 'invalid')).toBe(espn);
   for (const invalid of ['-1', '101', '10%', '', '0.5']) expect(() => configure('compare', invalid)).toThrow('SCOREARC_READER_COMPARE_PERCENT');
+});
+
+it('records a valid empty reader resource through the configured trial when ESPN is unavailable', async () => {
+  const espn = setup().espn as unknown as DataStore;
+  const failure = new Error('ESPN unavailable');
+  const now = Date.parse('2026-11-24T12:00:00Z');
+  const evidence = { version: 1, resources: { editionTeams: { status: 'empty', availability: 'empty', source: 'espn',
+    derivation: 'derived', scope: 'competition-season', observedAt: new Date(now - 7000).toISOString(), finalizedAt: null } } };
+  const events: ComparisonEvent[] = [];
+  const store = configuredDataStore({ espn, fallback: () => ({ ...espn, getEditionTeams: async () => { throw failure; } }),
+    env: { SCOREARC_DATA_SOURCE: 'compare', SCOREARC_READER_COMPARE_PERCENT: '100', SCOREARC_READER_ORIGIN: 'https://reader.example' },
+    now: () => now, fetch: async () => Response.json([], { headers: { 'X-ScoreArc-Resources': JSON.stringify(evidence) } }),
+    onComparison: event => events.push(event) });
+  const logs = vi.spyOn(console, 'info').mockImplementation(() => {});
+  try {
+    await expect(store.getEditionTeams(rc)).rejects.toBe(failure);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'read', outcome: 'inconclusive', readerResult: 'usable' }));
+    expect(logs.mock.calls.map(([line]) => JSON.parse(line))).toContainEqual(expect.objectContaining({
+      event: 'scorearc_reader_resource', endpoint: 'getEditionTeams', resource: 'editionTeams', clock: 'observed', ageSeconds: 7,
+      freshness: 'empty', availability: 'empty',
+    }));
+  } finally { logs.mockRestore(); }
 });
 
 it('ties a swallowed dependency failure to its owning read and keeps an unrelated concurrent match comparable', async () => {

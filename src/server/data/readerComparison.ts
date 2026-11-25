@@ -1,4 +1,4 @@
-import { correlationFields, healthContext, healthMetadata, withHealthContext, type DependencyFault, type FrontendHttpFields } from '@/lib/telemetry/http';
+import { correlationFields, healthContext, healthMetadata, withHealthContext, type DependencyFault, type FrontendHttpFields, type HealthContext } from '@/lib/telemetry/http';
 import type { CompetitionSeason } from './competitions';
 import type { DataStore } from './store';
 import type { SourceContext } from './sourceSelection';
@@ -15,7 +15,7 @@ export type ComparisonEvent = (
   | { type: 'operation'; cohort: Cohort; served: Source | 'error' | 'cancelled'; decision: Decision; durationMs: number }
   | { type: 'read'; endpoint: keyof DataStore; outcome: 'control' | 'control_error' | 'match' | 'mismatch' | 'reader_error' | 'inconclusive';
       competition: string; season: string; espnMs?: number; readerMs?: number; readerError?: string; readerStatus?: number;
-      espnError?: string; espnStatus?: number; differences?: Difference[]; truncated?: boolean }
+      readerResult?: 'usable' | 'unavailable'; espnError?: string; espnStatus?: number; differences?: Difference[]; truncated?: boolean }
   | { type: 'upstream_error'; source: Source; endpoint: string; code: string; status?: number }
 ) & ReturnType<typeof correlationFields> & Partial<ReturnType<typeof healthMetadata>> & { policy?: string };
 // Both views of a sampled operation use the same strict ESPN reads.
@@ -69,6 +69,7 @@ export interface ComparisonOptions {
   sample?: () => number;
   onComparison?: Emit;
   onHttp?: (event: FrontendHttpFields) => void;
+  onReaderResource?: HealthContext['onReaderResource'];
 }
 
 function comparisonOutcome(espnFailed: boolean, readerFailed: boolean,
@@ -175,7 +176,10 @@ async function runComparison<T>(options: ComparisonOptions, cohort: Cohort, call
           reads++;
           const [reference, candidate] = await Promise.all([
             observe(() => abortable(load(baseline), signal)),
-            observe(() => { readerSignal.throwIfAborted(); return abortable(load(reader), readerSignal); }),
+            observe(() => withHealthContext({ onReaderResource: options.onReaderResource }, () => {
+              readerSignal.throwIfAborted();
+              return abortable(load(reader), readerSignal);
+            })),
           ]);
           finished++;
           caller?.throwIfAborted();
@@ -186,6 +190,7 @@ async function runComparison<T>(options: ComparisonOptions, cohort: Cohort, call
           emitComparison(options, { type: 'read', endpoint, competition: rc.competition.id, season: rc.season.id, outcome,
             espnMs: reference.ms, readerMs: candidate.ms, espnError: espnFault?.code, espnStatus: espnFault?.status,
             readerError: readerFault?.code, readerStatus: readerFault?.status,
+            readerResult: candidate.ok && !readerFault ? 'usable' : 'unavailable',
             differences: comparison?.differences.length ? comparison.differences.slice(0, 8) : undefined, truncated: (comparison && (comparison.truncated || comparison.differences.length > 8)) || undefined });
           if (outcome !== 'match') {
             if (agreed || outcome === 'inconclusive') decision = outcome;

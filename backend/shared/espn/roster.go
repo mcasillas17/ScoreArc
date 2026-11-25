@@ -110,37 +110,19 @@ func MapRoster(raw []byte) (model.Squad, error) {
 			HeadshotURL: providerMediaURL(athlete.Headshot.Href),
 			FlagURL:     providerMediaURL(athlete.Flag.Href),
 		}
-		values, err := rosterStatValues(athlete.Statistics)
+		stats, err := rosterStats(athlete.Statistics)
 		if err != nil {
 			return model.Squad{}, fmt.Errorf("roster athlete %s statistics: %w", athlete.ID, err)
 		}
-		if values != nil {
-			member.Stats = &model.PlayerSeasonStats{
-				Appearances:    values["appearances"],
-				SubIns:         values["subIns"],
-				Goals:          values["totalGoals"],
-				Assists:        values["goalAssists"],
-				Shots:          values["totalShots"],
-				ShotsOnTarget:  values["shotsOnTarget"],
-				Offsides:       values["offsides"],
-				FoulsCommitted: values["foulsCommitted"],
-				FoulsSuffered:  values["foulsSuffered"],
-				OwnGoals:       values["ownGoals"],
-				YellowCards:    values["yellowCards"],
-				RedCards:       values["redCards"],
-				Saves:          values["saves"],
-				GoalsConceded:  values["goalsConceded"],
-				ShotsFaced:     values["shotsFaced"],
-			}
-		}
+		member.Stats = stats
 		squad.Players = append(squad.Players, member)
 	}
 	return squad, nil
 }
 
-// A nil map means omitted statistics; an explicit complete empty collection
+// Nil means omitted statistics; an explicit complete empty collection
 // remains an accepted observation with nullable measurements.
-func rosterStatValues(raw json.RawMessage) (map[string]*int, error) {
+func rosterStats(raw json.RawMessage) (*model.PlayerSeasonStats, error) {
 	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return nil, nil
 	}
@@ -155,7 +137,28 @@ func rosterStatValues(raw json.RawMessage) (map[string]*int, error) {
 	if err := validateCollectionMetadata(statistics, len(categories)); err != nil {
 		return nil, err
 	}
-	values := make(map[string]*int)
+	stats := &model.PlayerSeasonStats{}
+	// ESPN can add percentages and ratings. Only the measurements we store
+	// have the integer-count contract below.
+	fields := map[string]**int{
+		"appearances":    &stats.Appearances,
+		"subIns":         &stats.SubIns,
+		"totalGoals":     &stats.Goals,
+		"goalAssists":    &stats.Assists,
+		"totalShots":     &stats.Shots,
+		"shotsOnTarget":  &stats.ShotsOnTarget,
+		"offsides":       &stats.Offsides,
+		"foulsCommitted": &stats.FoulsCommitted,
+		"foulsSuffered":  &stats.FoulsSuffered,
+		"ownGoals":       &stats.OwnGoals,
+		"yellowCards":    &stats.YellowCards,
+		"redCards":       &stats.RedCards,
+		"saves":          &stats.Saves,
+		"goalsConceded":  &stats.GoalsConceded,
+		"shotsFaced":     &stats.ShotsFaced,
+	}
+	seen := make(map[string]bool)
+	hasUnmapped := false
 	for _, category := range categories {
 		stats, err := validateCollection(category, "stats")
 		if err != nil {
@@ -169,24 +172,33 @@ func rosterStatValues(raw json.RawMessage) (map[string]*int, error) {
 			if stat.Name == "" || len(stat.Value) == 0 {
 				return nil, fmt.Errorf("measurement missing name or value")
 			}
-			if _, duplicate := values[stat.Name]; duplicate {
+			destination, known := fields[stat.Name]
+			if !known {
+				hasUnmapped = true
+				continue
+			}
+			if seen[stat.Name] {
 				return nil, fmt.Errorf("repeated measurement %s", stat.Name)
 			}
+			seen[stat.Name] = true
 			var value *float64
 			if err := json.Unmarshal(stat.Value, &value); err != nil {
 				return nil, err
 			}
-			values[stat.Name] = nil
 			if value != nil {
 				if *value < 0 || *value >= float64(int(^uint(0)>>1)) || math.Trunc(*value) != *value {
 					return nil, fmt.Errorf("invalid measurement %s", stat.Name)
 				}
 				count := int(*value)
-				values[stat.Name] = &count
+				*destination = &count
 			}
 		}
 	}
-	return values, nil
+	// An unrecognized measurement alone supplies no new facts about stored counts.
+	if hasUnmapped && len(seen) == 0 {
+		return nil, nil
+	}
+	return stats, nil
 }
 
 // providerMediaURL returns value when it is provider CDN media (cdnurl), else "".

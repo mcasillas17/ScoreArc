@@ -23,12 +23,13 @@ import (
 
 // ESPN implements Source with ESPN's keyless public API.
 type ESPN struct {
-	client   *espn.Client
-	coreBase string
-	now      func() time.Time
-	group    singleflight.Group
-	mu       sync.Mutex
-	recent   map[string]cachedResponse
+	observeFeed func(endpoint, competition string, raw []byte)
+	client      *espn.Client
+	coreBase    string
+	now         func() time.Time
+	group       singleflight.Group
+	mu          sync.Mutex
+	recent      map[string]cachedResponse
 }
 
 type cachedResponse struct {
@@ -54,6 +55,14 @@ func NewESPN(client *espn.Client) *ESPN {
 		client: client, coreBase: espn.CorePlaysBase, now: time.Now,
 		recent: make(map[string]cachedResponse),
 	}
+}
+
+// NewObservedESPN reports the original roster and biography documents before
+// validation. The observer has no say in whether the source accepts a response.
+func NewObservedESPN(client *espn.Client, observe func(endpoint, competition string, raw []byte)) *ESPN {
+	provider := NewESPN(client)
+	provider.observeFeed = observe
+	return provider
 }
 
 // NewESPNWithBase overrides the core-host base for tests.
@@ -399,6 +408,9 @@ func (e *ESPN) Roster(
 	if err != nil {
 		return model.Squad{}, err
 	}
+	if e.observeFeed != nil {
+		e.observeFeed("roster", comp.ID, raw)
+	}
 	year, err := providerYear(season)
 	if err != nil {
 		return model.Squad{}, err
@@ -432,6 +444,9 @@ func (e *ESPN) AthleteBio(
 	raw, err := e.get(ctx, espn.AthleteBioURL(comp.ESPNSlug, athleteSourceID))
 	if err != nil {
 		return nil, err
+	}
+	if e.observeFeed != nil {
+		e.observeFeed("bio", comp.ID, raw)
 	}
 	if err := espn.ValidateAthleteBioEnvelope(raw); err != nil {
 		return nil, err

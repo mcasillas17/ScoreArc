@@ -1,4 +1,5 @@
 import type { AsyncLocalStorage } from 'node:async_hooks';
+import type { ReaderResource, ReaderResourceName } from '@/lib/readerResources';
 
 interface Correlation {
   requestId?: string;
@@ -30,6 +31,7 @@ export interface DependencyFault {
 export interface HealthContext extends Correlation {
   onHttp?: (fields: FrontendHttpFields) => void;
   onDependencyFailure?: (source: 'reader' | 'espn', fault: DependencyFault) => void;
+  onReaderResource?: (name: ReaderResourceName, value: ReaderResource, now: number) => void;
 }
 
 // Next supplies AsyncLocalStorage in both server runtimes. Plain Node CLI/tests use the same built-in.
@@ -67,4 +69,12 @@ export function healthMetadata() {
 
 export function emitHttpHealth(fields: FrontendHttpFields) {
   console.info(JSON.stringify({ event: 'scorearc_http', service: 'frontend', ...healthMetadata(), ...correlationFields(), ...fields }));
+}
+
+/** Finalized evidence has its own clock. The age panel measures only observations. */
+export function emitReaderResource(resource: ReaderResourceName, value: ReaderResource, now: number) {
+  const clock = value.finalizedAt ? 'finalized' : value.observedAt ? 'observed' : 'unknown';
+  const ageSeconds = clock === 'observed' && value.observedAt ? Math.floor((now - Date.parse(value.observedAt)) / 1000) : undefined;
+  console.info(JSON.stringify({ event: 'scorearc_reader_resource', service: 'frontend', ...healthMetadata(),
+    endpoint: healthContext().logicalEndpoint, resource, clock, freshness: value.status, availability: value.availability, ageSeconds }));
 }

@@ -8,4 +8,6 @@ GRANT SELECT (competition_id, season_id, source, attempted_at, succeeded_at, out
   ON public.match_poll_status TO scorearc_grafana_read;
 GRANT SELECT (source, last_error, retry_at, last_attempted_at)
   ON public.match_sync_status TO scorearc_grafana_read;
+GRANT SELECT (endpoint, kind, path, detail, first_competition, example, first_seen_at, last_seen_at, observed_hours)
+  ON public.espn_feed_change TO scorearc_grafana_read;
 COMMIT;

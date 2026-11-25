@@ -54,14 +54,22 @@ transforms:
         if !includes(["inbound", "outbound"], .direction) || !is_integer(.durationMs) { abort }
       } else if .event == "scorearc_reader_comparison" {
         if .service != "frontend" || !includes(["operation", "read"], .type) { abort }
+      } else if .event == "scorearc_reader_resource" {
+        if .service != "frontend" || !includes(["observed", "finalized", "unknown"], .clock) { abort }
+        if !includes(["getMatches", "getFixtures", "getLiveWindow", "getUpcoming", "getEditionTeams", "getStandings", "getBracket", "getMatchSummary", "getLeaders", "getTeam", "getSquad", "getPlayer"], .endpoint) { abort }
+        if !includes(["matches", "editionTeams", "bracket", "standings", "leaders", "identity", "detail", "squad", "seasonStats", "career", "gameLog", "participation"], .resource) { abort }
+        if !includes(["fresh", "empty", "dormant", "stale", "unavailable"], .freshness) { abort }
+        if !includes(["complete", "empty", "partial", "pending", "unavailable"], .availability) { abort }
+        if .clock == "observed" && (!is_integer(.ageSeconds) || int!(.ageSeconds) < 0) { abort }
+        if .clock != "observed" { del(.ageSeconds) }
       } else { abort }
       stamp = parse_timestamp!(string(.timestamp) ?? string!(.time), format: "%+")
       fields = {}
-      for_each(["event", "service", "type", "cohort", "decision", "served", "endpoint", "direction", "dependency", "method", "outcome", "appError", "readerError", "espnError", "policy", "delivery"]) -> |_i, key| {
+      for_each(["event", "service", "type", "cohort", "decision", "served", "endpoint", "direction", "dependency", "method", "outcome", "appError", "readerError", "espnError", "readerResult", "resource", "clock", "freshness", "availability", "policy", "delivery"]) -> |_i, key| {
         v = get!(., [key])
         if is_string(v) && match(string!(v), r'^[A-Za-z0-9_{}./:-]{1,180}$') { fields = set!(fields, [key], v) }
       }
-      for_each(["status", "readerStatus", "espnStatus", "durationMs", "readerMs", "espnMs", "bytes", "attempt"]) -> |_i, key| {
+      for_each(["status", "readerStatus", "espnStatus", "durationMs", "readerMs", "espnMs", "bytes", "attempt", "ageSeconds"]) -> |_i, key| {
         v = get!(., [key])
         if is_integer(v) && int!(v) >= 0 { fields = set!(fields, [key], v) }
       }

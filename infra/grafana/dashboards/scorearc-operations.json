@@ -337,13 +337,242 @@
       "interval": "1m"
     },
     {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Reader usability by endpoint",
+      "description": "Percent of completed sampled logical reads that returned a reader result without a reader dependency fault. Includes ESPN failures and mismatches. An interval with no measured reads has no rate.",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * avg_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort, endpoint, readerResult | type=\"read\" | cohort=\"sample\" | readerResult=~\"usable|unavailable\" | label_format usable=`{{ if eq .readerResult \"usable\" }}1{{ else }}0{{ end }}` | unwrap usable | __error__=\"\" [$__interval]) by (endpoint)",
+          "queryType": "range",
+          "legendFormat": "{{endpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Reader attempts by endpoint",
+      "description": "Count of completed sampled logical reads behind the usability rate. A join can contain several reads. ESPN-only controls and news make no reader attempt.",
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint, readerResult) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort, endpoint, readerResult | type=\"read\" | cohort=\"sample\" | readerResult=~\"usable|unavailable\" | __error__=\"\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{endpoint}} · {{readerResult}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Oldest observed resource at read time",
+      "description": "Maximum seconds since the ESPN observation when a sampled reader resource was checked, including cached responses and stale observations rejected by the reader policy. Finalized and unknown clocks appear in the evidence counts.",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time({job=\"scorearc\",event=\"scorearc_reader_resource\",service=\"frontend\"} | json endpoint, resource, clock, freshness, ageSeconds | clock=\"observed\" | unwrap ageSeconds | __error__=\"\" [$__interval]) by (endpoint, resource, freshness)",
+          "queryType": "range",
+          "legendFormat": "{{endpoint}} · {{resource}} · {{freshness}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Reader resource evidence at read time",
+      "description": "Counts of validated resource checks. One logical read can check multiple resources. Finalized takes precedence when both clocks exist. Missing observation and finalization clocks appear as unknown. Failed requests without resource metadata contribute only to the logical read panels.",
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint, resource, clock, freshness, availability) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_resource\",service=\"frontend\"} | json endpoint, resource, clock, freshness, availability | __error__=\"\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{endpoint}} · {{resource}} · {{clock}} · {{freshness}} · {{availability}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "ESPN feed changes",
+      "description": "Up to 100 distinct changes first seen or last recorded in the selected window. Inspection covers valid roster and biography JSON up to 2 MiB. Fragments are limited to 1 KiB. The example and competition come from the first sighting. Repeat sightings update at most once per UTC hour. Queue, quota and write warnings appear in the ingester logs. Biography requests use one competition namespace for players across all editions.",
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 16,
+        "h": 9
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "scorearc-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "SELECT endpoint AS \"Endpoint\", path AS \"Field path\", kind AS \"Change\", detail AS \"Detail\",\n       first_competition AS \"First request competition\", example::text AS \"First example\",\n       first_seen_at AS \"First seen\", last_seen_at AS \"Last recorded\", observed_hours AS \"Observed hours\"\nFROM public.espn_feed_change\nWHERE $__timeFilter(first_seen_at) OR $__timeFilter(last_seen_at)\nORDER BY CASE WHEN $__timeFilter(last_seen_at) THEN last_seen_at ELSE first_seen_at END DESC, endpoint, path, kind, detail\nLIMIT 100"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "First example"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 21,
+      "type": "text",
+      "title": "Recorded replay coverage · CI",
+      "gridPos": {
+        "x": 16,
+        "y": 34,
+        "w": 8,
+        "h": 9
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "CI writes recorded ESPN responses into Postgres and reads them back through ScoreArc HTTP handlers.\n\n- [Team roster → squad response](https://github.com/mcasillas17/ScoreArc/blob/main/backend/reader/reader_contract_integration_test.go)\n- [Player biography → career response](https://github.com/mcasillas17/ScoreArc/blob/main/backend/reader/players_integration_test.go)\n\n[Check the backend job for the main commit](https://github.com/mcasillas17/ScoreArc/actions/workflows/ci.yml?query=branch%3Amain). Replay coverage is independent of live traffic and the dashboard time range."
+      }
+    },
+    {
       "id": 7,
       "type": "timeseries",
       "title": "Endpoint failure rate",
       "description": "Failed HTTP attempts divided by completed attempts at each boundary. Cancellations are excluded; HTTP 200 responses with body failures count as failures.",
       "gridPos": {
         "x": 0,
-        "y": 18,
+        "y": 43,
         "w": 12,
         "h": 8
       },
@@ -386,7 +615,7 @@
       "description": "Failed attempts per interval with the observed HTTP status, failure type, and application code when available.",
       "gridPos": {
         "x": 12,
-        "y": 18,
+        "y": 43,
         "w": 12,
         "h": 8
       },
@@ -429,7 +658,7 @@
       "description": "95th percentile of recorded request durations at each boundary, including failed and cancelled attempts.",
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 51,
         "w": 12,
         "h": 8
       },
@@ -472,7 +701,7 @@
       "description": "Observed HTTP attempts per interval, including cancellations and retries. Frontend and Go service boundaries are separate series.",
       "gridPos": {
         "x": 12,
-        "y": 26,
+        "y": 51,
         "w": 12,
         "h": 8
       },
@@ -515,7 +744,7 @@
       "description": "Current latest poll per competition and season, across rolling and full polls. This snapshot stays visible when the ingester stops.",
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 59,
         "w": 24,
         "h": 8
       },
@@ -540,7 +769,7 @@
       "description": "Latest 100 runs starting inside the selected time range. Open runs have no completion time.",
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 67,
         "w": 16,
         "h": 8
       },
@@ -565,7 +794,7 @@
       "description": "Current pending or failed recovery records by provider, including how many have reached their next retry time.",
       "gridPos": {
         "x": 16,
-        "y": 42,
+        "y": 67,
         "w": 8,
         "h": 8
       },

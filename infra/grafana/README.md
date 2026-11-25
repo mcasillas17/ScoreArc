@@ -1,6 +1,19 @@
 # ScoreArc operations in Grafana
 
-The **ScoreArc operations** dashboard (UID `scorearc-operations`) combines the sampled reader trial, physical HTTP failures and p95 latency, and the ingester's poll, run and recovery records. A read-only Neon login supplies ingestion history even while the comparison trial is off. Loki stores seven days of structured request and comparison events on its persistent volume. The experiment's mismatch rate uses only comparable reads. A missing denominator displays no value.
+The **ScoreArc operations** dashboard (UID `scorearc-operations`) combines the sampled reader trial, resource age, ESPN feed changes, physical HTTP failures and p95 latency, and the ingester's poll, run and recovery records. A read-only Neon login supplies ingestion history and captured changes even while the comparison trial is off. Loki retains seven days of structured telemetry.
+
+## Reading the readiness panels
+
+- **Reader usability** counts each completed sampled logical read once. A usable result requires a successful reader return and zero reported reader dependency faults. A swallowed dependency failure counts as unavailable. Both usable and unavailable reads count when ESPN fails. Verify the count by endpoint in the adjacent panel. The disagreement rate still uses only comparable reads. Controls, news and events from before the reader-result field shipped contribute to neither the usability numerator nor its denominator. An empty interval has no rate.
+- **Resource age** measures the oldest known observation at read time within each interval. Resource evidence includes checks on cached responses and stale required resources rejected by the reader policy. The evidence counts distinguish an unknown clock from a finalized resource. A resource with both clocks counts as finalized. A read that fails before producing valid metadata can contribute to the usability panel without an age sample.
+- **ESPN feed changes** shows the latest 100 distinct changes first seen or last recorded in the selected window. Intermediate hourly sightings contribute to the count. Only the first and last times are retained. Inspection covers valid roster and player biography JSON up to 2 MiB. The ingester retains up to 32 findings per response, a 1 KiB representative fragment for each signature and 1,024 signatures per endpoint and change kind. Subsequent sightings advance the recorded time at most once per UTC hour. Check `fly logs -a scorearc-ingester` for queue drops and failed or capacity-limited writes if expected changes are absent.
+- **Recorded replay coverage** links to CI and its roster and biography cases. Use the backend job for the commit under review to see its result. These checks run against Postgres and HTTP handlers independently of the live sample.
+
+### Reviewing an ESPN change
+
+Open the **ESPN feed changes** row to see the provider path, its first request competition and a bounded example. The biography sweep uses one ESPN competition namespace for players across all editions. For an added field or named statistic, check its meaning and units against examples from the relevant competitions. If ScoreArc should use it, add a recorded case and expected reader fields, update the mapper and persistence as needed, then replay it through Postgres and the HTTP reader. Mark an intentionally unused shape as reviewed in the detector baseline to stop recording new sightings. The first discovery remains available in its original time range.
+
+For a missing required field, unexpected status or changed type, check the corresponding ingester run and the most recent accepted observation. Optional fields can vary across players and competitions. Use a replay that reproduces the provider change before updating the contract.
 
 ## Origin
 
@@ -59,6 +72,6 @@ To close remote dashboard access on Fly, remove the Access allow policy or run `
 
 ## Verification
 
-Run `tests/smoke.sh` from a Docker-accessible checkout or deployment copy. The test starts disposable Loki and receiver containers, posts representative Vercel and Fly events, checks credential separation and field filtering, runs the dashboard's LogQL queries, and removes only its own containers and volumes. For Neon, use Grafana's datasource health check and the three ingester panels. With the dedicated login, selecting the raw ingest error column must be denied.
+Run `tests/smoke.sh` from a Docker-accessible checkout or deployment copy. The test starts disposable Loki and receiver containers, posts representative Vercel and Fly events, checks credential separation and field filtering, runs the dashboard's LogQL queries, and removes only its own containers and volumes. For Neon, use Grafana's datasource health check and the ingester and feed-change panels. Deploy migration 0031 before the updated dashboard. It grants access to the existing Grafana role. For a first-time install run the current `postgres.sql` after migrating. With the dedicated login, selecting the raw ingest error column must be denied.
 
 [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/setup/secure-private-apps/private-web-app/) · [Fly log shipping](https://github.com/superfly/fly-log-shipper) · [Vercel drains](https://vercel.com/docs/drains/using-drains)
