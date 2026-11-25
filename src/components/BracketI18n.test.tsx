@@ -159,6 +159,42 @@ describe('bracket localization', () => {
     });
   });
 
+  it('shares two-leg scorelines and restores the edition pick independently of live results', async () => {
+    const edition = COMPETITIONS['liga-mx'].seasons['2026-apertura'];
+    const uri = '/en/c/liga-mx/2026-apertura';
+    window.history.replaceState(null, '', uri);
+    window.localStorage.clear();
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const seeded = { ...match(0), home: { ...team('ame', 'América'), overallSeed: 3 }, away: { ...team('mty', 'Monterrey'), overallSeed: 6 } };
+    const renderEdition = () => render(<I18nProvider locale="en"><BracketInteractive
+      rounds={[{ slug: 'quarterfinals', matches: [seeded] }]} apiBase="/api/liga-mx/2026-apertura"
+      compId="liga-mx" seasonId={edition.id} compShortName="Liga MX" seasonLabel={edition.label}
+      shape={bracketShapeFor(edition)} emblem="🏆" predictionEnabled poll={false} /></I18nProvider>);
+    const first = renderEdition();
+    fireEvent.click(screen.getByRole('tab', { name: 'Build your bracket' }));
+    for (const [name, value] of [['América', '1'], ['Monterrey', '0']]) {
+      for (const leg of ['Ida', 'Vuelta']) {
+        fireEvent.change(screen.getByRole('textbox', { name: new RegExp(name + '.*' + leg, 'i') }), { target: { value } });
+      }
+    }
+    expect(screen.getByText('América advances')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Share your bracket on X' }));
+    const sharedText = new URL(String(open.mock.calls[0][0])).searchParams.get('text')!;
+    const shared = new URL(sharedText.slice(sharedText.indexOf('http')));
+    first.unmount();
+    const restored = renderEdition();
+    expect(screen.queryByText('América advances')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Build your bracket' }));
+    expect(screen.getByText('América advances')).toBeDefined();
+    restored.unmount();
+    window.localStorage.clear();
+    window.history.replaceState(null, '', uri + shared.search);
+    renderEdition();
+    expect(await screen.findByText('América advances')).toBeDefined();
+    expect(screen.getByRole('tab', { name: 'Build your bracket' }).getAttribute('aria-selected')).toBe('true');
+    window.history.replaceState(null, '', '/');
+  });
+
   it('renders read-only bracket and accessibility text from the Spanish catalog', () => {
     const { container } = render(bracket(false, true));
     const html = container.innerHTML;

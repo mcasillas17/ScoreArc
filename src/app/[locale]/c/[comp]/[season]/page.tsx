@@ -240,7 +240,9 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
   // and nothing left for the bracket to poll for: the finished World Cup was
   // re-reading two months of scoreboard every 10s for every open tab.
   const finalDecided = bracket.some(r => r.slug === 'final' && r.matches.some(m => m.winnerId));
-  const predictionEnabled = !readOnly && !finalDecided;
+  const liguilla = rc.season.playoffFormat === 'liga-mx-apertura';
+  // Fans can revisit their saved two-leg scorelines after the final.
+  const predictionEnabled = !readOnly && (liguilla || !finalDecided);
   const start = rc.season.bracketDatesRange && utcDate(rc.season.bracketDatesRange.slice(0, 8));
   const upcomingKnockoutDate = start && start > Date.now() && supportsResource(rc.season, 'standings')
     ? formatDate(new Date(start), locale, { dateStyle: 'long', timeZone: 'UTC' })
@@ -250,11 +252,11 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
     <main className="main">
       <section id="bracket" className="bracket-section">
         <header className="bracket-head">
-          <p className="bracket-eyebrow">{rc.competition.shortName}</p>
-          <h1 className="bracket-title">{t('bracket.knockout')}</h1>
+          <p className="bracket-eyebrow">{rc.competition.shortName}{liguilla && ` · ${rc.season.label}`}</p>
+          <h1 className="bracket-title">{t(liguilla ? 'sidebar.liguilla' : 'bracket.knockout')}</h1>
         </header>
         {bracket.length > 0
-          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} logo={rc.competition.logo} logoInvert={rc.competition.logoInvert} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} accent={rc.competition.bracketAccent} shape={bracketShapeFor(rc.season)} readOnly={readOnly} predictionEnabled={predictionEnabled} poll={!finalDecided} /></div>
+          ? <div key={apiBase} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} logo={rc.competition.logo} logoInvert={rc.competition.logoInvert} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} accent={rc.competition.bracketAccent} shape={bracketShapeFor(rc.season)} readOnly={readOnly} predictionEnabled={predictionEnabled} poll={!finalDecided} /></div>
           : <div className="empty-section">
               <p className="empty-text">{upcomingKnockoutDate ? t('bracket.startsOn', upcomingKnockoutDate) : t('bracket.unavailable')}</p>
               {upcomingKnockoutDate && <Link href={`/${locale}/c/${comp}/${season}/standings`}>{t('bracket.viewGroups')}</Link>}

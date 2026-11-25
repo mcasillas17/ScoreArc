@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { redirect } from 'next/navigation';
 import { dataStore } from '@/server/data/store';
 import { I18nProvider } from '@/i18n/I18nProvider';
+import { projectLiguilla } from '@/server/data/liguillaProjection';
 import Workspace, { generateMetadata } from './page';
 import * as registry from '@/server/data/competitions';
 
@@ -40,7 +41,7 @@ describe('competition season root', () => {
     }
     vi.spyOn(dataStore, 'getMatches').mockResolvedValue([]);
     vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
-    vi.spyOn(dataStore, 'getStandings').mockResolvedValue([
+    vi.spyOn(dataStore, 'getBracket').mockResolvedValue(projectLiguilla([
       {
         id: 'general', name: 'General',
         standings: Array.from({ length: 18 }, (_, i) => ({
@@ -49,17 +50,17 @@ describe('competition season root', () => {
           goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0, advanced: false,
         })),
       } as never,
-    ]);
+    ])!);
     const node = await Workspace({ params: { locale: 'es', comp: 'liga-mx', season: '2026-apertura' } });
     const html = renderToStaticMarkup(<I18nProvider locale="es">{node}</I18nProvider>);
     expect(redirect).not.toHaveBeenCalled();
-    expect(html).toContain('Liguilla hoy');
-    expect(html).toContain('Si la Liguilla empezara hoy');
+    expect(html).toContain('Liguilla</h1>');
+    expect(html).toContain('ida y vuelta');
     expect(html).toContain('T1');
     // The interactive shell ships with it: predict mode is open on a
     // projection (quarters fully seeded), so the tabs render server-side.
     expect(html.includes('Arma tu cuadro')).toBe(!archive);
-    expect(html.includes('Proyección')).toBe(!archive);
+    expect(html).toContain('Proyección');
     expect(html).not.toContain('Resultados en vivo');
   });
 
@@ -67,7 +68,7 @@ describe('competition season root', () => {
   it('shows the unavailable state when the projection cannot build', async () => {
     vi.spyOn(dataStore, 'getMatches').mockResolvedValue([]);
     vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
-    vi.spyOn(dataStore, 'getStandings').mockRejectedValue(new Error('502'));
+    vi.spyOn(dataStore, 'getBracket').mockRejectedValue(new Error('502'));
     const node = await Workspace({ params: { locale: 'es', comp: 'liga-mx', season: '2026-apertura' } });
     const html = renderToStaticMarkup(<I18nProvider locale="es">{node}</I18nProvider>);
     expect(html).toContain('El cuadro no está disponible en este momento.');

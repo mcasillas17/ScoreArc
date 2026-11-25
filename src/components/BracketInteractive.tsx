@@ -1,7 +1,7 @@
 'use client';
 
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
 import { resolveSeason, supportsResource, type ChampionTitleKey } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
@@ -10,6 +10,8 @@ import ChampionCelebration from './ChampionCelebration';
 import type { BracketShape } from './bracketShape';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import { pollWhileVisible } from '@/lib/pollWhileVisible';
+import { buildLiguillaModel, liguillaTieKey, parseLiguillaPredictions, setLiguillaScore, type LiguillaPredictions } from '@/lib/liguilla';
+import LiguillaScorecard from './LiguillaScorecard';
 
 // "Build your bracket" (predict mode) is off unless the page turns it on: the
 // page passes `predictionEnabled` while the current edition's final is
@@ -104,7 +106,7 @@ export function mergeRounds(prev: BracketRound[], next: BracketRound[]): Bracket
 }
 
 // Compact, URL-safe encoding of a picks map so a shared link reopens the bracket.
-function encodePicks(picks: Record<string, string>): string {
+function encodePicks(picks: object): string {
   try {
     return btoa(JSON.stringify(picks))
       .replace(/\+/g, '-')
@@ -115,10 +117,11 @@ function encodePicks(picks: Record<string, string>): string {
   }
 }
 
-function decodePicks(s: string): Record<string, string> {
+function decodePicks(s: string): Record<string, unknown> {
   try {
+    if (s.length > 24_000) return {};
     const obj = JSON.parse(atob(s.replace(/-/g, '+').replace(/_/g, '/')));
-    if (obj && typeof obj === 'object') return obj as Record<string, string>;
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
   } catch {
     /* ignore malformed share codes */
   }
@@ -133,21 +136,44 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
   const [mode, setMode] = useState<BracketMode>('live');
   const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
   const [picks, setPicks] = useState<Record<string, string>>({});
+  const twoLegs = shape.playoffFormat === 'liga-mx-apertura';
+  const storageKey = `scorearc:liguilla:${compId}:${seasonId}:1`;
+  const [forecasts, setForecasts] = useState<LiguillaPredictions>({});
+  // Follow the live tie until the fan selects a card. null explicitly closes it.
+  const [selected, setSelected] = useState<string | null>();
+  const opener = useRef<Element | null>(null);
+  const model = useMemo(() => twoLegs ? buildLiguillaModel(rounds, forecasts, mode) : null, [twoLegs, rounds, forecasts, mode]);
+  const ties = Object.values(model?.ties ?? {});
+  const activeTie = selected === undefined
+    ? ties.find(tie => tie.legs.some(leg => leg.match?.state === 'live')) ?? ties.find(tie => !tie.official.winnerId) ?? ties[0]
+    : selected === null ? undefined : model?.ties[selected];
+  const liveLeaders = new Map<string, string>();
+  if (mode === 'live') for (const tie of ties) {
+    if (tie.official.leaderId) liveLeaders.set(tie.match.id, tie.official.leaderId);
+  }
+  const outcome = mode === 'live' ? activeTie?.official : activeTie?.forecast;
+  const [homeTotal, awayTotal] = outcome?.aggregate ?? [];
+  const awayLeads = activeTie && (outcome?.winnerId ?? outcome?.leaderId) === activeTie.match.away.id;
+  const semis = model?.rounds.find(round => round.slug === 'semifinals')?.matches;
   const [champion, setChampion] = useState<BracketTeam | null>(null);
   const [celebrate, setCelebrate] = useState<BracketTeam | null>(null);
   const feedFailed = useRef(false);
+  const finalDecided = twoLegs && rounds.some(round => round.slug === 'final' && round.matches.some(match => match.winnerId));
 
-  // Poll the bracket every 15s so finished matches advance in real time (the
+  // Poll the bracket every 10s so finished matches advance in real time (the
   // server snapshot from page load would otherwise go stale). Predict-mode
   // picks live in separate state and are untouched; RadialBracket already
   // prefers a real result over a pick, so newly-decided matches just take over.
   useEffect(() => {
-    if (readOnly || !poll) return; // finished or synthetic — nothing to poll
-    let mounted = true;
+    if (readOnly || !poll || finalDecided) return;
+    const controller = new AbortController();
+    let pending = false;
     async function pollBracket() {
+      if (pending) return;
+      pending = true;
       try {
-        const res = await fetch(`${apiBase}/bracket`, { cache: 'no-store' });
-        if (!mounted) return;
+        const res = await fetch(`${apiBase}/bracket`, { cache: 'no-store', signal: controller.signal });
+        if (controller.signal.aborted) return;
         if (!res.ok) {
           if (!feedFailed.current) {
             trackFeedFailure('bracket', res.status);
@@ -156,49 +182,84 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
           return;
         }
         const data = (await res.json()) as BracketRound[];
-        if (!mounted) return;
-        if (mounted && Array.isArray(data) && data.length) {
-          setRounds((prev) => mergeRounds(prev, data));
+        if (controller.signal.aborted) return;
+        if (Array.isArray(data) && data.length) {
+          // A corrected leg can change the series winner. Always recompute it from the new official scores.
+          setRounds((prev) => twoLegs ? data : mergeRounds(prev, data));
         }
         if (feedFailed.current) {
           trackFeedRecovery('bracket');
           feedFailed.current = false;
         }
       } catch {
-        if (!mounted) return;
+        if (controller.signal.aborted) return;
         if (!feedFailed.current) {
           trackFeedFailure('bracket');
           feedFailed.current = true;
         }
-      }
+      } finally { pending = false; }
     }
     const stop = pollWhileVisible(pollBracket, 10_000);
     return () => {
-      mounted = false;
+      controller.abort();
       stop();
     };
-  }, []);
+  }, [apiBase, poll, readOnly, twoLegs, finalDecided]);
 
   // Finishing your bracket in predict mode triggers the celebration; clearing /
   // Reset removes it; re-picking a different champion re-triggers it.
   useEffect(() => {
-    if (mode === 'predict' && champion) setCelebrate(champion);
-    else if (!champion) setCelebrate(null);
+    if (mode === 'predict' && champion && !finalDecided) setCelebrate(champion);
+    else setCelebrate(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [champion?.id, mode]);
+  }, [champion?.id, mode, finalDecided]);
 
   // Hydrate a shared bracket from ?b=... on first load.
   useEffect(() => {
     if (!predictionEnabled) return; // predict mode disabled — ignore shared brackets
     const code = new URLSearchParams(window.location.search).get('b');
-    if (!code) return;
-    const shared = decodePicks(code);
-    if (Object.keys(shared).length) {
-      setPicks(shared);
+    const shared = code ? decodePicks(code) : {};
+    if (twoLegs) {
+      if (shared.version === 1 && shared.scores) {
+        const scores = parseLiguillaPredictions(shared.scores);
+        setForecasts(scores);
+        if (typeof shared.tie === 'string' && Object.hasOwn(scores, shared.tie)) setSelected(shared.tie);
+        setMode('predict');
+        return;
+      }
+      try {
+        const local = localStorage.getItem(storageKey);
+        if (local) setForecasts(parseLiguillaPredictions(JSON.parse(local)));
+      } catch { /* Storage can be unavailable in a private browsing session. */ }
+    }
+    const legacy = Object.entries(shared).filter((entry): entry is [string, string] =>
+      /^[0-4]:\d{1,2}$/.test(entry[0]) && typeof entry[1] === 'string');
+    if (legacy.length) {
+      setPicks(Object.fromEntries(legacy));
       setMode('predict');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function saveForecasts(next: LiguillaPredictions) {
+    setForecasts(next);
+    setPicks({});
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Edits still work in memory. */ }
+    // Editing a shared bracket creates this fan's copy. Reload should reopen their edits.
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('b')) {
+      for (const param of ['b', 'c', 'name', 'crest']) url.searchParams.delete(param);
+      window.history.replaceState(window.history.state, '', url);
+    }
+  }
+
+  function openTie(match: BracketMatch) {
+    const key = liguillaTieKey(match);
+    if (!model?.ties[key]) return;
+    opener.current = document.activeElement;
+    setSelected(key);
+    requestAnimationFrame(() => document.getElementById('liguilla-scorecard')?.focus());
+  }
 
   function share() {
     const origin =
@@ -208,14 +269,15 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
     // The crest travels only where the card renders it: club competitions.
     // A national champion's card uses the flag, so the crest would be ~100
     // dead characters in every shared World Cup link.
-    const shareCrest = teamStyle === 'crest' ? champion?.crestUrl : null;
+    const pick = finalDecided ? null : champion;
+    const shareCrest = teamStyle === 'crest' ? pick?.crestUrl : null;
     const query = new URLSearchParams({
-      b: encodePicks(picks),
-      ...(champion && { c: champion.abbr, name: champion.name }),
+      b: encodePicks(twoLegs && !Object.keys(picks).length ? { version: 1, scores: forecasts, tie: activeTie?.key } : picks),
+      ...(pick && { c: pick.abbr, name: pick.name }),
       ...(shareCrest && { crest: shareCrest }),
     });
     const url = `${origin}/${locale}/c/${compId}/${seasonId}?${query}`;
-    const text = t('bracket.shareText', champion?.name ?? '', compShortName, seasonLabel, url);
+    const text = t('bracket.shareText', pick?.name ?? '', compShortName, seasonLabel, url);
     const hashtag = `${compShortName}${seasonLabel}`.replace(/[^\p{L}\p{N}_]/gu, '');
     const tweet = `https://twitter.com/intent/tweet?${new URLSearchParams({ text, hashtags: hashtag })}`;
     window.open(tweet, '_blank', 'noopener,noreferrer');
@@ -238,13 +300,38 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
     });
   }
 
-  const projected = rounds[0]?.matches[0]?.id.startsWith('proj-');
+  const projected = rounds.length > 0 && rounds.every(r => r.matches.every(m => m.id.startsWith('proj-')));
+  const arc = (
+    <RadialBracket
+      teamBase={edition && supportsResource(edition, 'teams') ? `/${locale}/c/${compId}/${seasonId}/team` : undefined}
+      playerBase={edition && supportsResource(edition, 'players') ? `/${locale}/c/${compId}/${seasonId}/player` : undefined}
+      rounds={model?.rounds ?? rounds}
+      mode={mode}
+      picks={picks}
+      accent={accent}
+      onPick={handlePick}
+      tieControls={twoLegs ? {
+        open: openTie, selectedId: activeTie?.match.id, liveLeaders,
+        aggregateLabel: homeTotal != null && awayTotal != null
+          ? t('bracket.liguillaAggregateShort', awayLeads ? awayTotal : homeTotal, awayLeads ? homeTotal : awayTotal) : undefined,
+      } : undefined}
+      onChampion={setChampion}
+      teamStyle={teamStyle}
+      apiBase={apiBase}
+      shape={shape}
+      emblem={emblem}
+      trophyImage={trophyImage}
+      logo={logo}
+      logoInvert={logoInvert}
+      championTitleKey={championTitleKey}
+    />
+  );
   return (
-    <div className="bracket-interactive">
+    <div className={twoLegs ? 'bracket-interactive liguilla-bracket' : 'bracket-interactive'}>
       {shape.playoffFormat && (
         <p className="bracket-projection-note">
           {projected && <strong>{t('bracket.projectionTab')}. </strong>}
-          {t(shape.playoffFormat === 'nwsl' ? 'bracket.nwslFormat' : 'bracket.femenilFormat')}
+          {t(twoLegs ? 'bracket.liguillaFormat' : shape.playoffFormat === 'nwsl' ? 'bracket.nwslFormat' : 'bracket.femenilFormat')}
         </p>
       )}
       {/* Past (finished) editions are view-only — no Live/Predict tabs. The
@@ -259,7 +346,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
             className={`bracket-mode${mode === 'live' ? ' bracket-mode--active' : ''}`}
             onClick={() => setMode('live')}
           >
-            {t(poll && !projected ? 'bracket.liveResults' : 'bracket.projectionTab')}
+            {t(!projected && (twoLegs || poll) ? 'bracket.liveResults' : 'bracket.projectionTab')}
           </button>
           <button
             type="button"
@@ -275,7 +362,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
 
       {mode === 'predict' && (
         <div className="bracket-controls">
-          <span className="bracket-hint">{t('bracket.advanceHint')}</span>
+          {!twoLegs && <span className="bracket-hint">{t('bracket.advanceHint')}</span>}
           <button
             type="button"
             className="bracket-share"
@@ -287,30 +374,36 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
             </svg>
             {t('bracket.share')}
           </button>
-          <button type="button" className="bracket-reset" onClick={() => setPicks({})}>
+          <button type="button" className="bracket-reset" onClick={() => twoLegs ? saveForecasts({}) : setPicks({})}>
             {t('bracket.reset')}
           </button>
         </div>
       )}
 
-      <RadialBracket
-        teamBase={edition && supportsResource(edition, 'teams') ? `/${locale}/c/${compId}/${seasonId}/team` : undefined}
-        playerBase={edition && supportsResource(edition, 'players') ? `/${locale}/c/${compId}/${seasonId}/player` : undefined}
-        rounds={rounds}
-        mode={mode}
-        picks={picks}
-        accent={accent}
-        onPick={handlePick}
-        onChampion={setChampion}
-        teamStyle={teamStyle}
-        apiBase={apiBase}
-        shape={shape}
-        emblem={emblem}
-        trophyImage={trophyImage}
-        logo={logo}
-        logoInvert={logoInvert}
-        championTitleKey={championTitleKey}
-      />
+      {twoLegs ? <div className="liguilla-layout">
+        <div className="liguilla-stage">
+          {arc}
+          <p className="bracket-hint">{t(mode === 'live' ? 'bracket.liguillaViewHint' : 'bracket.liguillaPredictHint')}</p>
+        </div>
+        {activeTie && <LiguillaScorecard tie={activeTie} mode={mode}
+          onScore={(field, teamId, score) => {
+            setSelected(activeTie.key);
+            saveForecasts(setLiguillaScore(forecasts, activeTie.match, field, teamId, score));
+          }}
+          onClose={() => {
+            setSelected(null);
+            if (opener.current instanceof SVGElement || opener.current instanceof HTMLElement) opener.current.focus({ preventScroll: true });
+          }} />}
+      </div> : arc}
+
+      {mode === 'predict' && semis?.length === 2 && semis.every(m => !m.home.placeholder && !m.away.placeholder) && (
+        <div className="liguilla-semifinals">
+          <span>{t('bracket.liguillaProjectedSemis')}</span>
+          {semis.map(match => <button key={match.id} type="button" onClick={() => openTie(match)}>
+            {match.home.name} {t('match.versusShort')} {match.away.name}
+          </button>)}
+        </div>
+      )}
 
       {mode === 'live' && <ThirdPlaceMini rounds={rounds} />}
 
