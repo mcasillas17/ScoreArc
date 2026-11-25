@@ -100,11 +100,13 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
 2. **Config export** — `scripts/export-competitions.mjs` generates `backend/config/competitions.json` from the frontend's `src/server/data/competitions.ts` (single source of truth); `backend/config/config.go` loads it (`//go:embed`), with tests. Run `npm run export:competitions` to regenerate.
 3. **Postgres migrations** — the canonical schema, the forward history surfaces,
    the active snapshot tables (standings, win-prob, odds), replacement/retention
-   grants, and the finalization guards; the migration head on this branch is
-   `0030_player_profile_media` (observed player flags, career crests and biography retry scheduling). It follows
-   `0029_match_poll_evidence`: independent full-season and
-   rolling match poll evidence. Its [migration-before-merge gate](docs/backend/RELEASES.md)
-   is separate from `0028_resource_observation`, the T17.3 collection migration.
+   grants, and the finalization guards. The migration head on this branch is
+   `0031_espn_feed_change`, the operator corpus for roster and biography feed
+   changes. Its [release procedure](docs/backend/RELEASES.md#migration-0031-espn-feed-changes)
+   requires clean version 30 and owner authorization before merge.
+   `0030_player_profile_media` added observed player flags, career crests and biography retry scheduling.
+   `0029_match_poll_evidence` added independent full-season and rolling match poll evidence.
+   `0028_resource_observation` was the T17.3 collection migration.
    **The owner confirms migration 0028 and T17.3 were deployed October 31,
    following Teams/Players/Leaders.** Do not repeat those migrations. T16.3 adds
    no migration; deployment and source activation remain separate gates. See

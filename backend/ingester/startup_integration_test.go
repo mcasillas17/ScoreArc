@@ -2,15 +2,20 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mcasillas17/scorearc-backend/migrations"
+	"github.com/mcasillas17/scorearc-backend/shared/feeddrift"
+	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
 
 // The lease key from shared/store/lease.go, so the test can hold it as owner.
@@ -107,14 +112,29 @@ func TestIngesterStartupRefusesAnIncompatibleSchemaBeforeLeaseOrSeed(t *testing.
 		assertSessionsReleased(t)
 	})
 
-	t.Run("compatible schema keeps the existing startup path", func(t *testing.T) {
+	t.Run("compatible schema can start with feed monitoring unavailable", func(t *testing.T) {
 		setRecoveryLedger(t, owner, head)
+		if _, err := owner.Exec(ctx, `REVOKE ALL PRIVILEGES ON espn_feed_change FROM scorearc_ingester`); err != nil {
+			t.Fatal(err)
+		}
 		code, logs := runIngester(t, dsn)
 		if code != 1 || !strings.Contains(logs, "configure R2 mirror") {
 			t.Fatalf("exit %d, want 1 from the synthetic R2 configuration: %s", code, logs)
 		}
 		if n := count(t, `SELECT count(*) FROM competition`); n == 0 {
 			t.Fatal("compatible schema did not reach lease-protected seeding")
+		}
+		writer, err := store.New(ctx, os.Getenv("POOLED_DSN"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = writer.RecordFeedChanges(ctx, "bio", "premier-league", []feeddrift.Finding{
+			{Kind: "new_field", Path: "$.new", Detail: "boolean", Example: []byte("true")},
+		})
+		writer.Close()
+		var denied *pgconn.PgError
+		if !errors.As(err, &denied) || denied.Code != "42501" {
+			t.Fatalf("expected only the diagnostics write to be denied: %v", err)
 		}
 		assertSessionsReleased(t)
 	})

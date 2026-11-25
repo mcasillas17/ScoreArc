@@ -117,7 +117,7 @@ export function seasonStats(athlete: any): PlayerSeasonStats | null {
   }
   if (flat.size === 0) return null;
   const get = (name: string) => (flat.has(name) ? flat.get(name)! : null);
-  return {
+  const totals = {
     appearances: get('appearances'),
     subIns: get('subIns'),
     totalGoals: get('totalGoals'),
@@ -134,6 +134,7 @@ export function seasonStats(athlete: any): PlayerSeasonStats | null {
     shotsFaced: get('shotsFaced'),
     goalsConceded: get('goalsConceded'),
   };
+  return Object.keys(totals).some(name => flat.has(name)) ? totals : null;
 }
 
 /**

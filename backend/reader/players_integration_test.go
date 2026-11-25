@@ -168,7 +168,11 @@ func TestPlayerReadIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer writer.Close()
-	history, err := espn.MapAthleteBio(contractFixture(t, "espn-athlete-bio.json"))
+	rawBio := contractFixture(t, "espn-athlete-bio.json")
+	if err := espn.ValidateAthleteBioEnvelope(rawBio); err != nil {
+		t.Fatal(err)
+	}
+	history, err := espn.MapAthleteBio(rawBio)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,6 +201,24 @@ func TestPlayerReadIntegration(t *testing.T) {
 			}
 		} else if stint.TeamID != nil {
 			t.Fatal("unresolved career got a link")
+		}
+	}
+	// Use the recording itself as the oracle so identical mistakes in the mapper
+	// and writer cannot hide missing fields in the public HTTP response.
+	var recorded struct {
+		TeamHistory []struct{ DisplayName, Seasons, Logo string }
+	}
+	if err := json.Unmarshal(rawBio, &recorded); err != nil {
+		t.Fatal(err)
+	}
+	served := get(playerPath)["career"].([]any)
+	if len(served) != len(recorded.TeamHistory) {
+		t.Fatalf("HTTP career length=%d, recording=%d", len(served), len(recorded.TeamHistory))
+	}
+	for i, want := range recorded.TeamHistory {
+		row := served[i].(map[string]any)
+		if row["teamName"] != want.DisplayName || row["seasons"] != want.Seasons || row["crestUrl"] != want.Logo {
+			t.Fatalf("HTTP career row %d differs from ESPN recording: %v", i, row)
 		}
 	}
 	// Failed optional SQL is not represented as an absent optional block.

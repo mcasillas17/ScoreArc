@@ -10,8 +10,16 @@ const job = 'scorearc-smoke-' + randomUUID();
 const now = Date.now();
 const comparison = 'scorearc_reader_comparison';
 const http = 'scorearc_http';
+const resource = 'scorearc_reader_resource';
 
 const reads = (outcomes) => outcomes.map(outcome => ({ type: 'read', endpoint: 'getMatches', outcome }));
+const measuredReads = [
+  ...reads(['match', 'match', 'mismatch']).map(row => ({ ...row, cohort: 'sample', readerResult: 'usable' })),
+  { ...reads(['reader_error'])[0], cohort: 'sample', readerResult: 'unavailable' },
+  { ...reads(['inconclusive'])[0], cohort: 'sample', readerResult: 'usable', espnError: 'http', espnStatus: 503 },
+  { ...reads(['inconclusive'])[0], cohort: 'sample', readerResult: 'unavailable', readerError: 'http', readerStatus: 429, espnError: 'http', espnStatus: 503 },
+];
+const observation = { endpoint: 'getMatches', resource: 'matches', clock: 'observed', availability: 'complete', freshness: 'fresh' };
 const operations = ['espn', 'reader'].map(served => ({
   type: 'operation', cohort: 'sample', decision: served === 'reader' ? 'agreement' : 'mismatch', served,
 }));
@@ -47,9 +55,12 @@ async function query(target, offset = 0) {
 await push([
   stream(comparison, reads(['inconclusive']), 240_000),
   stream(comparison, reads(['match']), 120_000),
-  stream(comparison, [...reads(['match', 'match', 'mismatch', 'reader_error', 'control_error', 'control']),
-    { ...reads(['inconclusive'])[0], readerError: 'http', readerStatus: 429, espnError: 'http', espnStatus: 503 },
+  stream(comparison, [...measuredReads, ...reads(['control_error', 'control']),
     ...operations, { type: 'operation', cohort: 'control', decision: 'control', served: 'espn' }]),
+  stream(resource, [{ ...observation, ageSeconds: 5 }, { ...observation, ageSeconds: 40 },
+    { ...observation, ageSeconds: 7200, freshness: 'stale' },
+    { ...observation, clock: 'finalized' },
+    { ...observation, resource: 'identity', clock: 'unknown', availability: 'partial', freshness: 'unavailable' }]),
   stream(http, requests),
 ]);
 
@@ -79,4 +90,12 @@ assert.ok(error?.metric.endpoint === 'matches' && Number(error.value[1]) === 1);
 assert.ok(values.get(8).some(row => row.metric.status === 'no_response' && row.metric.outcome === 'timeout'));
 assert.ok(!values.get(8).some(row => row.metric.outcome === 'cancelled'));
 assert.ok(scalar(9) >= 60 && scalar(9) <= 100, 'Latency uses recorded durations');
+assert.ok(Math.abs(scalar(16) - 100 * 4 / 6) < 0.001, 'Reader usability counts both usable and failed readers when ESPN failed');
+assert.equal(Number(values.get(17).find(row => row.metric.readerResult === 'usable').value[1]), 4);
+assert.equal(Number(values.get(17).find(row => row.metric.readerResult === 'unavailable').value[1]), 2);
+assert.equal((await query(dashboard.panels.find(p => p.id === 16).targets[0], 240_000)).length, 0, 'Historical reads without a reader result have no usability rate');
+assert.deepEqual(values.get(18).map(row => Number(row.value[1])).sort((a,b) => a-b), [40,7200], 'Only observed clocks have an age');
+assert.ok(values.get(19).some(row => row.metric.clock === 'finalized' && row.metric.resource === 'matches'));
+assert.ok(values.get(19).some(row => row.metric.clock === 'unknown' && row.metric.resource === 'identity'));
+assert.ok(values.get(19).some(row => row.metric.freshness === 'stale' && row.metric.endpoint === 'getMatches'));
 console.log('All dashboard LogQL queries and sampled/no-data/error denominators passed');

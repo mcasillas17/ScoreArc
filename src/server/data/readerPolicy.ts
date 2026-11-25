@@ -1,4 +1,5 @@
 import type { ReaderResource, ReaderResourceName, ReaderResources } from '@/lib/readerResources';
+import { healthContext } from '@/lib/telemetry/http';
 import { ReaderFailure } from './readerTransport';
 
 type Scopes = Partial<Record<ReaderResourceName, ReaderResource['scope']>>;
@@ -23,6 +24,7 @@ export function requireResources(evidence: ReaderResources, scopes: Scopes, requ
       if (resource.observedAt === null) throw new ReaderFailure('metadata');
       if (now - Date.parse(resource.observedAt) >= ttl) resource.status = 'stale';
     }
+    healthContext().onReaderResource?.(name, resource, now);
     if (required.includes(name)) {
       if (!['complete', 'empty'].includes(resource.availability)) throw new ReaderFailure('unavailable');
       if (!['fresh', 'empty', 'dormant'].includes(resource.status)) throw new ReaderFailure(resource.status === 'stale' ? 'stale' : 'unavailable');

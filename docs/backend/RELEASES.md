@@ -1,16 +1,14 @@
 # Production release runbook
 
-**Player profile media requires migration `0030_player_profile_media` before merging.** Verify the target is clean at 29. Coordinate the normal owner-authorized migration and the reader/ingester release using the [schema readiness procedure](#schema-readiness). Confirm clean version 30 before merging. The migration adds nullable media and bio retry-scheduling columns without rewriting existing rows. Flags populate on accepted roster refreshes and career crests on regular bio refreshes. Roll back the columns only after retiring binaries that read or write them.
+**ESPN roster and biography feed monitoring requires migration 0031 before merge.** Production migration 0031 is pending. Start at clean version 30 and coordinate the reader and ingester release with the database owner. Follow the [migration 0031 procedure](#migration-0031-espn-feed-changes).
 
-**Earlier scoped-poll release:** the owner previously confirmed 0028.
-Verify that the target ledger is clean at 28, then separately authorize and apply
-`0029_match_poll_evidence` through the normal migration process. Verify clean
-version 29 and the reader/ingester grants before merging. A merge can release
-both Fly services and the frontend; **this change does not migrate production**.
-Coordinate the [exact-head transition](#schema-readiness): old binaries cannot
-restart on the newer ledger. No historical full-poll success is invented.
-For rollback retain the applied migration and checkpoint-v3 reader; do not drop
-the evidence columns under a serving binary or restore an older alert history.
+**Earlier migrations.** Migration `0030_player_profile_media` followed clean version
+29 and added nullable player media and biography retry-scheduling columns.
+Flags populate on accepted roster refreshes and career crests on regular bio
+refreshes. Migration `0029_match_poll_evidence` followed the owner-confirmed
+0028 and introduced independent full-season and rolling poll evidence.
+For rollback, preserve the applied migrations, evidence columns, and checkpoint-v3
+reader while serving binaries depend on them. See [rollback compatibility](#rollback-compatibility).
 
 Scope: T21.1 delivery of source code to Fly reader/ingester and Vercel frontend.
 The [decision](../decisions/2026-09-05-ci-production-gates.md) owns the invariant;
@@ -391,6 +389,55 @@ applied migration file and must not drop a schema dependency under a serving
 binary; see [rollback compatibility](#rollback-compatibility). Missing Vercel
 credentials block frontend rollback too:
 restore the deployment identity, not a raw dashboard bypass.
+
+## Migration 0031 (ESPN feed changes)
+
+1. Confirm the production ledger contains exactly one clean row at 30. Apply
+   `0031_espn_feed_change` through the owner-authorized migration process.
+   The new table starts empty. Observations begin with the next roster or
+   biography responses fetched by the upgraded ingester.
+2. Confirm a clean ledger at 31. Verify that both candidate binaries pass
+   `-check-schema` with their application logins and coordinate the merge and
+   release in the same window. A restart of an older binary will refuse the
+   newer ledger. See [schema readiness](#schema-readiness).
+3. The migration grants the existing `scorearc_grafana_read` role access to
+   the feed-change columns. For a fresh Grafana installation, apply the
+   [role bootstrap](../../infra/grafana/postgres.sql) after migrating.
+   Confirm that the dedicated Grafana login can run the query below before
+   provisioning the updated dashboard in the existing Access-protected stack.
+   An empty result means no retained finding yet. Confirm recent successful
+   ingester activity separately. At clean schema 31 the ingester can start
+   and write accepted football data if diagnostics permissions are unavailable.
+   A `write_failure` warning during observation is a reason to check the
+   ingester's column grants on `espn_feed_change`.
+
+   ```sql
+   SELECT endpoint, kind, path, detail, first_competition, example::text,
+          first_seen_at, last_seen_at, observed_hours
+   FROM public.espn_feed_change
+   ORDER BY last_seen_at DESC
+   LIMIT 10;
+   ```
+
+The table keeps the first competition and a JSON example of up to 1 KiB for
+each distinct endpoint, kind, path and detail. `last_seen_at` records the
+first observation in the most recent observed UTC hour. `observed_hours`
+counts hours with a sighting across all competitions. Replayed polls within
+one hour preserve that count.
+
+The writer admits up to 1,024 distinct signatures per endpoint and kind.
+At capacity it renews known signatures, saves any new signatures that fit,
+and reports a diagnostics failure for the overflow. Other endpoint and kind
+quotas remain available. For a capacity incident, inspect the most frequent
+paths and details, review the detector baseline, then have the database owner
+archive the reviewed rows privately before removing them to release capacity.
+There is no automatic expiry. A removed signature can be recorded again with
+a new first example if it still recurs.
+
+For an application rollback, retain migration 0031 and its evidence in the
+revert build so both services still pass the ledger check. Its down migration
+drops the operator corpus. Archive it first if a separately authorized
+coordinated downgrade requires that migration.
 
 ## Schema readiness
 

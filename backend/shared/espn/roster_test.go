@@ -205,3 +205,33 @@ func TestMapRosterKeepsOnlyESPNCDNHeadshots(t *testing.T) {
 		}
 	}
 }
+
+func TestNewRosterStatCannotInvalidateKnownMeasurements(t *testing.T) {
+	for _, tc := range []struct {
+		name, value string
+		accepted    bool
+	}{
+		{"expectedGoals", "1.25", true},
+		{"providerGrade", `"A"`, true},
+		{"totalGoals", "1.25", false},
+		{"goalAssists", "-1", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := `{"status":"success","team":{"id":"227"},"athletes":[{"id":"7","fullName":"Player","statistics":{"splits":{"categories":[{"stats":[{"name":"appearances","value":3},{"name":"` + tc.name + `","value":` + tc.value + `}]}]}}}]}`
+			squad, err := MapRoster([]byte(raw))
+			if (err == nil) != tc.accepted {
+				t.Fatalf("accepted=%v, err=%v", tc.accepted, err)
+			}
+			if tc.accepted && (squad.Players[0].Stats.Appearances == nil || *squad.Players[0].Stats.Appearances != 3) {
+				t.Fatal("lost known appearances")
+			}
+		})
+	}
+}
+
+func TestRosterUnmappedStatsAloneDoNotReplaceExistingCounts(t *testing.T) {
+	stats, err := rosterStats([]byte(`{"splits":{"categories":[{"stats":[{"name":"providerGrade","value":"A"}]}]}}`))
+	if err != nil || stats != nil {
+		t.Fatalf("an unknown stat alone must leave existing counts intact: %+v, %v", stats, err)
+	}
+}

@@ -243,3 +243,10 @@ describe('team schedule pre-match display', () => {
     expect(mapTeamSchedule({ events: [event] })[0]).toMatchObject({ homeScore: 0, awayScore: 0, statusDetail: 'FT' });
   });
 });
+
+it('keeps season counts unavailable when ESPN supplies only a new statistic', () => {
+  const athletes = [{ id: '7', fullName: 'Player', statistics: { splits: {
+    categories: [{ stats: [{ name: 'expectedGoals', value: 1.25 }] }],
+  } } }];
+  expect(mapTeamRoster({ athletes })[0]?.stats).toBeNull();
+});
