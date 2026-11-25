@@ -134,7 +134,14 @@ const squadPlayer = object({
   id: providerId, name: text, jersey: nullable(count), position: string, age: nullable(count),
   nationality: nullable(string), headshotUrl: nullable(string), stats: nullable(playerStats),
 });
-export const decodeReaderSquad: Decoder<SquadPlayer[]> = array(squadPlayer, MAX_SQUAD_PLAYERS);
+const rosterPlayer: Decoder<SquadPlayer> = value => {
+  if (!value || typeof value !== 'object' || !('statsRetained' in value)) return squadPlayer(value);
+  const { statsRetained, ...raw } = value;
+  const player = squadPlayer(raw);
+  if (statsRetained !== true || player.stats === null) return invalid();
+  return { ...player, stats: null };
+};
+export const decodeReaderSquad: Decoder<SquadPlayer[]> = array(rosterPlayer, MAX_SQUAD_PLAYERS);
 const scope = object({ competitionId: text, seasonId: text });
 const scheduleAvailability = object({ results: oneOf(['available', 'unavailable'] as const), upcoming: oneOf(['available', 'unavailable'] as const) });
 export type ReaderTeam = TeamProfile & { scheduleAvailability: NonNullable<TeamProfile['scheduleAvailability']> };
@@ -163,10 +170,18 @@ const gameLog: Decoder<GameLogRow> = value => {
   return row;
 };
 export type ReaderPlayer = PlayerProfile & { playerSlug: null };
-export const decodeReaderPlayer: Decoder<ReaderPlayer> = object({
+const playerProfile: Decoder<ReaderPlayer> = object({
   id: uuid, playerSlug: nil, name: text, age: nullable(count), position: string, jersey: nullable(string),
   nationality: nullable(string), flagUrl: nullable(string), headshotUrl: nullable(string), team: nullable(team),
   seasonLabel: string, totals: array(object({ name: text, label: string, display: string, value: nullable(count) }), 15),
   gameLogLabel: oneOf(['Last 5 Matches'] as const), gameLog: array(gameLog, 5),
   career: array(object({ teamId: nullable(teamId), teamName: string, crestUrl: nullable(string), seasons: string }), 50),
 });
+
+export const decodeReaderPlayer: Decoder<ReaderPlayer> = value => {
+  if (!value || typeof value !== 'object' || !('totalsRetained' in value)) return playerProfile(value);
+  const { totalsRetained, ...rest } = value;
+  const profile = playerProfile(rest);
+  if (totalsRetained !== true || !profile.totals.length) return invalid();
+  return { ...profile, totals: [] };
+};

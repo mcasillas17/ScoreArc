@@ -7,6 +7,7 @@
  * faults/counters; GET /__test/state reports bounded counters and the last 100 calls.
  * This intentionally small dataset is browser test evidence, not a production snapshot.
  */
+import { compareUpcomingMatches } from '../src/server/data/upcomingOrder';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { createServer, type Server } from 'node:http';
@@ -223,13 +224,15 @@ export function createPreviewServer(): Server {
       if (route === 'matches') {
         const range = url.searchParams.get('range') ?? '';
         const state = url.searchParams.get('state');
+        const order = url.searchParams.get('order');
+        if (order !== null && (order !== 'teams' || state !== 'scheduled')) return send(400, { error: 'invalid match order' });
         const limit = url.searchParams.get('limit');
         const detail = url.searchParams.get('detail');
         if (!parseRange(range) || ![null, 'scheduled', 'live', 'finished'].includes(state) || ![null, 'summary'].includes(detail) || (limit !== null && (!/^[1-9][0-9]*$/.test(limit) || +limit > 100))) return send(400, { error: 'invalid match query' });
         const rows = scopedMatches.filter(match => {
           const day = match.kickoff.slice(0, 10).replaceAll('-', '');
           return day >= range.slice(0, 8) && day <= range.slice(9) && (state === null || match.state === state);
-        }).sort((a, b) => a.kickoff.localeCompare(b.kickoff) || a.id.localeCompare(b.id)).slice(0, limit === null ? undefined : +limit);
+        }).sort(order === 'teams' ? compareUpcomingMatches : (a, b) => a.kickoff.localeCompare(b.kickoff) || a.id.localeCompare(b.id)).slice(0, limit === null ? undefined : +limit);
         const resources = evidence(['matches', 'selection', rows.length], ['identity', 'competition-season']);
         if (detail) resources.resources.detail = resource('detail', 'competition-season');
         return send(200, rows, resources);

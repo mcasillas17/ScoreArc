@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/migrations"
+	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/pgtest"
 )
 
@@ -73,6 +74,32 @@ func TestResolveTeamHitsTheCrosswalk(t *testing.T) {
 	}
 	if id != "eng-arsenal" {
 		t.Fatalf("resolved %q, want the curated slug eng-arsenal", id)
+	}
+}
+
+func TestScoreboardTeamColoursFollowTheCrosswalkAndPreserveConflicts(t *testing.T) {
+	st, pool := newIntegrationStore(t)
+	mustSeed(t, st)
+	ctx := context.Background()
+	input := func(id, colour string) model.Match {
+		return model.Match{Home: model.Team{ID: id, AlternateColor: colour}}
+	}
+	for _, step := range []struct {
+		matches []model.Match
+		want    string
+	}{
+		{[]model.Match{input("359", "003399"), input("359", "003399")}, "003399"},
+		{[]model.Match{input("359", ""), input("999", "111111")}, "003399"},
+		{[]model.Match{input("359", "aaaaaa"), input("359", "bbbbbb")}, "003399"},
+		{[]model.Match{input("359", "DDAA11")}, "DDAA11"},
+	} {
+		if err := st.SetScoreboardTeamColours(ctx, "espn", step.matches); err != nil {
+			t.Fatal(err)
+		}
+		var got string
+		if err := pool.QueryRow(ctx, "SELECT alternate_color FROM team WHERE id='eng-arsenal'").Scan(&got); err != nil || got != step.want {
+			t.Fatalf("alternate colour = %q, want %q, err = %v", got, step.want, err)
+		}
 	}
 }
 

@@ -32,21 +32,22 @@ type CareerStint struct {
 }
 
 type PlayerProfile struct {
-	ID           string              `json:"id"`
-	PlayerSlug   *string             `json:"playerSlug"`
-	Name         string              `json:"name"`
-	Age          *int                `json:"age"`
-	Position     string              `json:"position"`
-	Jersey       *string             `json:"jersey"`
-	Nationality  *string             `json:"nationality"`
-	FlagURL      *string             `json:"flagUrl"`
-	HeadshotURL  *string             `json:"headshotUrl"`
-	Team         *espn.Team          `json:"team"`
-	SeasonLabel  string              `json:"seasonLabel"`
-	Totals       []PlayerSeasonTotal `json:"totals"`
-	GameLogLabel string              `json:"gameLogLabel"`
-	GameLog      []GameLogRow        `json:"gameLog"`
-	Career       []CareerStint       `json:"career"`
+	ID             string              `json:"id"`
+	PlayerSlug     *string             `json:"playerSlug"`
+	Name           string              `json:"name"`
+	Age            *int                `json:"age"`
+	Position       string              `json:"position"`
+	Jersey         *string             `json:"jersey"`
+	Nationality    *string             `json:"nationality"`
+	FlagURL        *string             `json:"flagUrl"`
+	HeadshotURL    *string             `json:"headshotUrl"`
+	Team           *espn.Team          `json:"team"`
+	SeasonLabel    string              `json:"seasonLabel"`
+	Totals         []PlayerSeasonTotal `json:"totals"`
+	TotalsRetained bool                `json:"totalsRetained,omitempty"`
+	GameLogLabel   string              `json:"gameLogLabel"`
+	GameLog        []GameLogRow        `json:"gameLog"`
+	Career         []CareerStint       `json:"career"`
 }
 
 func isCanonicalPlayerID(raw string) bool {
@@ -102,21 +103,21 @@ func (a *App) handlePlayer(w http.ResponseWriter, r *http.Request) {
 }
 
 const playerIdentitySQL = `
-SELECT p.id::text,p.full_name,
+SELECT p.id::text,coalesce(p.known_as,p.full_name),
  CASE WHEN p.birth_date <= (current_timestamp AT TIME ZONE 'UTC')::date
  THEN extract(year FROM age((current_timestamp AT TIME ZONE 'UTC')::date,p.birth_date))::int END,
- coalesce(p.position,''),nullif(p.nationality,''),sm.shirt_number::text,
+ coalesce(sm.position,p.position,''),nullif(p.nationality,''),p.flag_url,p.headshot_url,sm.shirt_number::text,
+ sm.player_id IS NOT NULL AND (` + rosterStatsRetainedSQL + `),
  t.id,t.name,t.abbr,t.crest_url,coalesce(sn.label||' '||c.short_name||' Stats',''),
  (SELECT count(*) FROM (SELECT 1 FROM appearance a JOIN match m ON m.id=a.match_id
  WHERE a.player_id=p.id AND m.competition_id=$2 AND m.season_id=$3
  AND m.state IN ('live','finished') LIMIT 2001) candidates)
 FROM player p
-LEFT JOIN player_season_stat ps ON $5 AND ps.player_id=p.id AND ps.competition_id=$2 AND ps.season_id=$3
+LEFT JOIN player_season_stat st ON $5 AND st.player_id=p.id AND st.competition_id=$2 AND st.season_id=$3
 LEFT JOIN LATERAL (SELECT * FROM squad_membership
  WHERE $5 AND player_id=p.id AND competition_id=$2 AND season_id=$3
- AND (ps.team_id IS NULL OR team_id=ps.team_id)
- ORDER BY updated_at DESC,team_id LIMIT 1) sm ON true
-LEFT JOIN team t ON t.id=coalesce(ps.team_id,sm.team_id)
+ ORDER BY updated_at DESC,(team_id=st.team_id) DESC NULLS LAST,team_id LIMIT 1) sm ON true
+LEFT JOIN team t ON t.id=coalesce(sm.team_id,st.team_id)
 LEFT JOIN competition c ON c.id=$2
 LEFT JOIN season sn ON sn.competition_id=$2 AND sn.id=$3
 WHERE p.id=$1 AND ` + playerVisibleSQL
@@ -128,7 +129,7 @@ func (s *Store) Player(ctx context.Context, id, competition, season string) (*Pl
 	p := &PlayerProfile{Totals: []PlayerSeasonTotal{}, GameLog: []GameLogRow{}, Career: []CareerStint{}, GameLogLabel: "Last 5 Matches"}
 	var teamID, name, abbr, crest *string
 	var candidates int
-	err := s.db.QueryRow(ctx, playerIdentitySQL, id, competition, season, visibleEntityScopes(ctx), canRead(ctx, "squad")).Scan(&p.ID, &p.Name, &p.Age, &p.Position, &p.Nationality, &p.Jersey, &teamID, &name, &abbr, &crest, &p.SeasonLabel, &candidates)
+	err := s.db.QueryRow(ctx, playerIdentitySQL, id, competition, season, visibleEntityScopes(ctx), canRead(ctx, "squad")).Scan(&p.ID, &p.Name, &p.Age, &p.Position, &p.Nationality, &p.FlagURL, &p.HeadshotURL, &p.Jersey, &p.TotalsRetained, &teamID, &name, &abbr, &crest, &p.SeasonLabel, &candidates)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -201,7 +202,7 @@ func (s *Store) playerTotals(ctx context.Context, id, competition, season string
 }
 
 func (s *Store) playerCareer(ctx context.Context, id string) ([]CareerStint, error) {
-	rows, err := s.db.Query(ctx, `SELECT r.team_id,h.team_name,t.crest_url,h.seasons
+	rows, err := s.db.Query(ctx, `SELECT r.team_id,h.team_name,coalesce(h.crest_url,t.crest_url),h.seasons
  FROM (SELECT * FROM player_team_history WHERE player_id=$1
  ORDER BY ord,team_source_id,seasons LIMIT 50) h
  LEFT JOIN team_external_ref r ON r.source=h.source AND r.source_id=h.team_source_id

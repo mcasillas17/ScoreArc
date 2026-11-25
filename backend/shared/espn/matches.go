@@ -68,12 +68,13 @@ type rawCompetitor struct {
 }
 
 type rawTeam struct {
-	ID           flexibleString `json:"id"`
-	DisplayName  string         `json:"displayName"`
-	Name         string         `json:"name"` // used by the bracket mapper's displayName ?? name ?? abbreviation fallback
-	Abbreviation string         `json:"abbreviation"`
-	Logo         *string        `json:"logo"`
-	Logos        []rawLogo      `json:"logos"`
+	ID             flexibleString  `json:"id"`
+	DisplayName    string          `json:"displayName"`
+	Name           string          `json:"name"` // used by the bracket mapper's displayName ?? name ?? abbreviation fallback
+	Abbreviation   string          `json:"abbreviation"`
+	Logo           *string         `json:"logo"`
+	Logos          []rawLogo       `json:"logos"`
+	AlternateColor json.RawMessage `json:"alternateColor"`
 }
 
 type flexibleString string
@@ -106,6 +107,10 @@ type rawLogo struct {
 
 // mapTeam ports espn-matches.ts's mapTeam.
 func mapTeam(t rawTeam) Team {
+	var alternateColor string
+	if len(t.AlternateColor) != 0 {
+		_ = json.Unmarshal(t.AlternateColor, &alternateColor) // An invalid cosmetic field cannot reject the match.
+	}
 	var crest *string
 	if t.Logo != nil && *t.Logo != "" {
 		crest = t.Logo
@@ -121,10 +126,11 @@ func mapTeam(t rawTeam) Team {
 		name = strings.TrimSpace(t.Abbreviation)
 	}
 	return Team{
-		ID:       string(t.ID),
-		Name:     name,
-		Abbr:     t.Abbreviation,
-		CrestURL: crest,
+		ID:             string(t.ID),
+		Name:           name,
+		Abbr:           t.Abbreviation,
+		CrestURL:       crest,
+		AlternateColor: normaliseHexColour(alternateColor),
 	}
 }
 

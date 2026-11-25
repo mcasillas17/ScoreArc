@@ -47,9 +47,9 @@ func (s *Store) CheckSchemaReady(ctx context.Context) error {
 	return migrations.CheckReady(ctx, s.pool, `SELECT s.observed_at,s.last_attempted_at,s.retry_at,s.attempts,s.last_error,
 		p.attempted_at,p.succeeded_at,p.outcome,p.event_count,p.seen_ids,p.absent_ids,p.missing_ids,p.missing_count,
 		r.competition_id,r.season_id,r.source,r.resource,r.subject,r.observed_at,r.row_count,
-		bio.bio_observed_at,stats.observed_at
+		bio.bio_observed_at,bio.bio_retry_after,bio.flag_url,history.crest_url,stats.observed_at
 		FROM match_sync_status s CROSS JOIN match_poll_status p CROSS JOIN resource_observation r
-		CROSS JOIN player bio CROSS JOIN player_season_stat stats WHERE false`)
+		CROSS JOIN player bio CROSS JOIN player_team_history history CROSS JOIN player_season_stat stats WHERE false`)
 }
 
 // A missing crosswalk is returned explicitly, not filtered out of the queue.

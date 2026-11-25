@@ -3,6 +3,63 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
+### November 24 production comparison audit
+
+From activation at **22:32:28 UTC on November 22** through **09:34:54 UTC on November 24**,
+483 of 2,581 comparable reads differed (18.71%). There were also 225 reader errors
+and 81 inconclusive reads. The sample covered 128 of 13,705 operations (0.93%).
+One operation can perform dozens of reads. Of the 128, ESPN served 111, ScoreArc
+served one, and 16 returned errors. All 16 were HTTP 500s on archived World Cup
+player pages before #315 deployed. [Grafana audit window](https://grafana.scorearc.futbol/d/scorearc-operations/scorearc-operations?from=1795386748000&to=1795512894000)
+
+The endpoint counts come from all 483 production mismatch records. Each Vercel log
+kept up to eight differing field paths. 330 records reached the truncation limit.
+The replays below use later provider responses and the proposed code.
+
+| Read | Mismatches | Cause and replay result |
+|---|---:|---|
+| Squad | 348 | Retained MLS totals, names, match-day stat changes, birthdays, positions and membership. After #305, 60 of 98 concerned retained MLS totals. The proposed code matched 307 of 307 fresh squads across all 14 sampled editions, including all 30 MLS clubs. Another 41 were stale and 15 were unavailable. |
+| Player profile | 81 | ESPN's athlete-wide overview mixed club and international appearances. Some profiles lacked observed flags, headshots or career badges on the reader. The revised site uses edition membership, roster totals and verified appearances. Media coverage depends on successful roster and career refreshes. |
+| Edition teams | 37 | The three affected national team lists match after verifying 118 exact ESPN country PNGs against their ScoreArc mirrors. Earlier policies also counted club crest pairs covered by #305. |
+| Team profile | 13 | All 13 lacked an alternate colour. The scoreboard supplies it. Conference/group rank and pre-match scores also differed. Five profiles matched in replay with the backend changes projected. Eight retained differences in ESPN schedule coverage, provider notes or squad data. Seven of these had incomplete ESPN schedules and now count as inconclusive, including when cached. |
+| Fixtures | 2 | Verified scoreboards lacked the edition on the website DTO. The WSL (27 matches) and NWSL (15) November windows matched in replay. |
+| Matches | 1 | The Bundesliga week also contained two all-null team stat blocks on unplayed matches. All nine matches agreed after preserving the difference between zero and unmeasured. |
+| Upcoming | 1 | Simultaneous WSL kickoffs changed which match made the 12-row cutoff. Applying the same kickoff and team ordering before the limit selected the same 12 on both sides. Postgres tests exercise the new reader query. |
+
+All 81 player URLs came from configured current editions. In a replay against
+the deployed schema-29 reader, 80 returned both profile bodies and one refused
+a conflicting club membership (Boulaye Dia, Rennes). The revised ESPN store
+and deployed reader agreed on 79 of those 80 match logs, including one
+successful retry after an ESPN timeout. Roberto Meraz's October 18 appearance
+remained pending in the reader while ESPN identified him as a starter. Five
+profiles still had incomplete ESPN dependencies on repeat reads. No whole
+player profile matched the pre-migration reader. These log comparisons do not
+establish whole-profile parity.
+
+Through 09:02:17 UTC, the ingester recorded 471 failed squad batches and 123
+failed bio batches. Seven competitions repeatedly returned sharply smaller
+rosters, which the ingester declined to overwrite. Six players whose ESPN
+responses lacked career history accounted for 696 failed fetches. Migration
+0030 lets the ingester defer an individual failure for six hours while
+preserving its last successful history.
+Five participation retries reported score conflicts. Five match batches and two
+play-stream batches also failed, with examples of a summary still in progress
+and pagination changing during capture. These are batch counts and can include
+retries of the same source data.
+
+Through the same 09:02:17 cutoff, ESPN roster HTTP telemetry recorded 1,013 responses with status 404 and 698
+timeouts (584 after receiving HTTP 200 headers). The reader recorded 36
+cancelled squad requests with attempted status 500. Physical requests can
+serve control traffic or contribute to a single sampled operation. The
+225 sampled reader errors consisted of 115 unavailable squads, 91 stale
+squads, 18 unavailable team lists and one unavailable bracket.
+
+The branch introduces comparison policy `reader-evaluation-v4`. Use that policy
+and the deployment timestamp to measure the new rate. Apply migration 0030 before
+merging, coordinate the Fly releases, and allow successful ingester refreshes
+before judging media coverage. This audit used read-only production access and
+left the experiment at 1%.
+
 ### November 22 reader comparison: what was noise and what is real
 
 Second live T16.4 run, 07:16 UTC November 22, same 20-sample manifest as

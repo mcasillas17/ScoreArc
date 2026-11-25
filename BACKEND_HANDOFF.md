@@ -100,8 +100,9 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
 2. **Config export** — `scripts/export-competitions.mjs` generates `backend/config/competitions.json` from the frontend's `src/server/data/competitions.ts` (single source of truth); `backend/config/config.go` loads it (`//go:embed`), with tests. Run `npm run export:competitions` to regenerate.
 3. **Postgres migrations** — the canonical schema, the forward history surfaces,
    the active snapshot tables (standings, win-prob, odds), replacement/retention
-   grants, and the finalization guards; the migration head is
-   `0029_match_poll_evidence` on this branch: independent full-season and
+   grants, and the finalization guards; the migration head on this branch is
+   `0030_player_profile_media` (observed player flags, career crests and biography retry scheduling). It follows
+   `0029_match_poll_evidence`: independent full-season and
    rolling match poll evidence. Its [migration-before-merge gate](docs/backend/RELEASES.md)
    is separate from `0028_resource_observation`, the T17.3 collection migration.
    **The owner confirms migration 0028 and T17.3 were deployed October 31,

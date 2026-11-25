@@ -25,7 +25,7 @@ export interface RequestBudget {
   readonly signal: AbortSignal;
   readonly calls: number;
   readonly bytes: number;
-  json(url: string, signal?: AbortSignal, dependency?: 'espn' | 'reader'): Promise<{ body: unknown; headers: Headers }>;
+  json(url: string, signal?: AbortSignal, dependency?: 'espn' | 'reader', responseByteLimit?: number): Promise<{ body: unknown; headers: Headers }>;
 }
 
 /** One shared budget includes queued reads, response streaming and fallback. */
@@ -61,7 +61,8 @@ export function createRequestBudget(options: {
     signal: options.signal,
     get calls() { return calls; },
     get bytes() { return bytes; },
-    async json(url, requestSignal, dependency = options.dependency) {
+    async json(url, requestSignal, dependency = options.dependency, responseByteLimit = maxResponseBytes) {
+      const limit = Math.min(maxResponseBytes, responseByteLimit);
       const signal = requestSignal ? AbortSignal.any([options.signal, requestSignal]) : options.signal;
       signal.throwIfAborted();
       if (admitted >= maxCalls || bytes >= maxBytes) throw new ReaderFailure('budget');
@@ -97,7 +98,7 @@ export function createRequestBudget(options: {
           void response.body?.cancel().catch(() => {});
           throw new ReaderFailure('http', response.status === 429 || response.status >= 500, response.status);
         }
-        if (Number(response.headers.get('content-length')) > maxResponseBytes) {
+        if (Number(response.headers.get('content-length')) > limit) {
           void response.body?.cancel().catch(() => {});
           throw new ReaderFailure('budget');
         }
@@ -113,7 +114,7 @@ export function createRequestBudget(options: {
             if (part.done) { complete = true; break; }
             received += part.value.byteLength;
             bytes += part.value.byteLength;
-            if (received > maxResponseBytes || bytes > maxBytes) throw new ReaderFailure('budget');
+            if (received > limit || bytes > maxBytes) throw new ReaderFailure('budget');
             text += decoder.decode(part.value, { stream: true });
           }
           text += decoder.decode();

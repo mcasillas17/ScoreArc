@@ -158,6 +158,15 @@ describe('mapSummaryScorers resilience', () => {
 });
 
 describe('mapSummaryStats', () => {
+  it('distinguishes two unmeasured sides from one measured zero', () => {
+    const home = { team: { id: 'a' }, statistics: [] as {name: string; displayValue: string}[] };
+    const away = { team: { id: 'b' }, statistics: [] };
+    const raw = { boxscore: { teams: [home, away] } };
+    expect(mapSummaryStats(raw, 'a', 'b')).toBeNull();
+    home.statistics.push({ name: 'totalShots', displayValue: '0' });
+    expect(mapSummaryStats(raw, 'a', 'b')).toMatchObject({ home: { shots: 0 }, away: { shots: null } });
+  });
+
   // Fixture: Ivory Coast (4789) is teams[0], Norway (464) is teams[1]
   // Pass Ivory Coast as home, Norway as away
   const result = mapSummaryStats(raw, '4789', '464');

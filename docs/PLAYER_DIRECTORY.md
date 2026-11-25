@@ -21,6 +21,14 @@ the available rosters can return 404, including for editions with little roster
 coverage. A roster-only profile has partial evidence for comparison whenever
 the edition also advertises a match log or career.
 
+Current player pages also use the requested roster for team, position, shirt and
+season totals. An athlete who plays for both club and country can therefore have
+different profiles in the two competitions. The match log uses the edition’s
+played-event index, verified team schedule and individual lineup evidence.
+A national-team profile can show fewer than five tournament appearances. Career
+history and portrait remain athlete-wide. A career club outside the directory
+may display the provider’s badge without a link.
+
 The directory reports teams with a nonempty roster out of distinct listed teams.
 That count does not certify completeness. No listed teams, no roster data,
 partial roster coverage, no search matches and failed directory loads are distinct

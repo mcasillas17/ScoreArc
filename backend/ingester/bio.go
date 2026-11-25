@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -15,6 +17,9 @@ const (
 	bioBatchSize = 20
 	// A career history changes on a transfer. Months, not minutes.
 	bioTTL = 30 * 24 * time.Hour
+	// Retry a temporarily unavailable history the same day, leaving capacity
+	// for other players if the provider keeps omitting one player's history.
+	bioRetryDelay = 6 * time.Hour
 )
 
 func (r *runner) refreshBios(ctx context.Context) error {
@@ -50,6 +55,7 @@ func (r *runner) refreshBios(ctx context.Context) error {
 	// segment in the URL, so use one configured ESPN slug for the global sweep.
 
 	var refreshErrors []error
+	var failedPlayers []uuid.UUID
 	for _, athleteSourceID := range athleteSourceIDs {
 		if ctx.Err() != nil {
 			refreshErrors = append(refreshErrors, ctx.Err())
@@ -57,6 +63,7 @@ func (r *runner) refreshBios(ctx context.Context) error {
 		}
 		entries, fetchErr := r.source.AthleteBio(ctx, comp, athleteSourceID)
 		if fetchErr != nil {
+			failedPlayers = append(failedPlayers, candidates[athleteSourceID])
 			refreshErrors = append(refreshErrors,
 				fmt.Errorf("athlete %s bio: %w", athleteSourceID, fetchErr))
 			continue
@@ -64,11 +71,17 @@ func (r *runner) refreshBios(ctx context.Context) error {
 		if writeErr := r.repo.ReplaceTeamHistory(
 			ctx, candidates[athleteSourceID], sourceESPN, entries,
 		); writeErr != nil {
+			failedPlayers = append(failedPlayers, candidates[athleteSourceID])
 			refreshErrors = append(refreshErrors,
 				fmt.Errorf("athlete %s history write: %w", athleteSourceID, writeErr))
 		}
 	}
 
+	if len(failedPlayers) > 0 && ctx.Err() == nil {
+		if err := r.repo.DeferBioRetries(ctx, failedPlayers, r.clock().Add(bioRetryDelay)); err != nil {
+			refreshErrors = append(refreshErrors, err)
+		}
+	}
 	refreshErr := errors.Join(refreshErrors...)
 	r.recordGlobalRun(ctx, "player_bios", start, refreshErr)
 	return refreshErr

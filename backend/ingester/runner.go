@@ -483,6 +483,14 @@ func (r *runner) ingestCompSeason(
 	if len(candidates) > 0 {
 		r.recordRun(ctx, comp.ID, "resolve_identity", resolveStart, resolveErr)
 	}
+	// A full scoreboard carries the clubs' alternate colours in the same
+	// response as the matches. Identity is now resolved, including new teams.
+	if backfill && scoreboardErr == nil && len(scoreboard) > 0 {
+		start := time.Now()
+		if err := r.repo.SetScoreboardTeamColours(ctx, sourceESPN, scoreboard); err != nil {
+			r.recordRun(ctx, comp.ID, "team_colours", start, err)
+		}
+	}
 
 	existingStart := time.Now()
 	existing, existingErr := r.repo.ExistingMatches(ctx, comp.ID, season.ID, ids)

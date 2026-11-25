@@ -170,7 +170,8 @@ it('counts a news read outside the experiment sample denominator', async () => {
 });
 
 it.each(['sample', 'control'])('keeps a partial ESPN player warmed by %s inconclusive until the cache expires', async firstCohort => {
-  const edition = resolveSeason('liga-mx')!;
+  const rc = resolveSeason('liga-mx')!;
+  const edition = { ...rc, season: { ...rc.season, resources: ['players', 'career'] as typeof rc.season.resources } };
   let now = 0;
   let unavailable = true;
   const cache = new TtlCache<unknown>(() => now);
@@ -195,7 +196,7 @@ it.each(['sample', 'control'])('keeps a partial ESPN player warmed by %s inconcl
     if (firstCohort === 'sample') getPlayer.mockRejectedValueOnce(new ReaderFailure('timeout'));
     const first = await store.getPlayer(edition, '297287');
     expect(first?.career).toEqual([]);
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
     if (firstCohort === 'sample') {
       expect(events).toContainEqual(expect.objectContaining({ type: 'read', outcome: 'inconclusive', espnStatus: 503, readerError: 'timeout' }));
       expect(events).toContainEqual(expect.objectContaining({ type: 'operation', served: 'espn', decision: 'inconclusive' }));
@@ -206,13 +207,13 @@ it.each(['sample', 'control'])('keeps a partial ESPN player warmed by %s inconcl
     expect(await store.getPlayer(edition, '297287')).toBe(first);
     expect(events).toContainEqual(expect.objectContaining({ type: 'read', outcome: 'inconclusive', espnStatus: 503 }));
     expect(events).toContainEqual(expect.objectContaining({ type: 'operation', served: 'espn', decision: 'inconclusive' }));
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
 
     now += 120_001;
     unavailable = false;
     events.length = 0;
     expect((await store.getPlayer(edition, '297287'))?.career).toHaveLength(4);
-    expect(fetcher).toHaveBeenCalledTimes(6);
+    expect(fetcher).toHaveBeenCalledTimes(4);
     expect(events).toContainEqual(expect.objectContaining({ type: 'read', outcome: 'match' }));
   } finally {
     vi.unstubAllGlobals();

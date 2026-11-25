@@ -75,6 +75,10 @@ describe('mapTeamProfile', () => {
 describe('mapTeamRoster', () => {
   const squad = mapTeamRoster(rosterRaw);
 
+  it('trims whitespace from a roster display name', () => {
+    expect(mapTeamRoster({ athletes: [{ id: '361455', displayName: 'Pedro Felipe ' }] })[0].name).toBe('Pedro Felipe');
+  });
+
   it('maps the whole squad', () => {
     expect(squad).toHaveLength(35);
     expect(squad.every((p) => p.id && p.name)).toBe(true);
@@ -219,5 +223,23 @@ describe('mapTeamSchedule placeholder crest', () => {
     competitor.team.logo = '';
     const [match] = mapTeamSchedule({ ...(scheduleRaw as any), events: [event] });
     expect(match[competitor.homeAway as 'home' | 'away'].crestUrl).toBeNull();
+  });
+});
+
+describe('team schedule pre-match display', () => {
+  it.each([
+    ['11/29 - 11:30 AM EST', '2026-11-29T16:30Z', 'Scheduled'],
+    ['3/27 - 10:00 AM EDT', '2027-03-27T14:00Z', 'Scheduled'],
+    ['11/29 - 10:30 AM EST', '2026-11-29T16:30Z', '11/29 - 10:30 AM EST'],
+    ['TBD', '2026-11-29T16:30Z', 'TBD'],
+  ])('preserves schedule detail unless it repeats kickoff (%s)', (shortDetail, kickoff, expected) => {
+    const event = structuredClone(scheduleRaw.events[0]);
+    event.date = kickoff;
+    const comp = event.competitions[0];
+    Object.assign(comp.status.type, { state: 'pre', name: 'STATUS_SCHEDULED', completed: false, shortDetail });
+    comp.competitors.forEach(side => Object.assign(side, { score: { displayValue: '0' } }));
+    expect(mapTeamSchedule({ events: [event] })[0]).toMatchObject({ homeScore: null, awayScore: null, statusDetail: expected });
+    Object.assign(comp.status.type, { state: 'post', name: 'STATUS_FULL_TIME', completed: true, shortDetail: 'FT' });
+    expect(mapTeamSchedule({ events: [event] })[0]).toMatchObject({ homeScore: 0, awayScore: 0, statusDetail: 'FT' });
   });
 });

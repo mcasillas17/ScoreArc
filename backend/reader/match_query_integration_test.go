@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -175,6 +176,28 @@ func TestMatchQueriesIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("upcoming team order selects tied kickoffs before the limit", func(t *testing.T) {
+		query := matchQuery{From: day("2026-08-22"), To: day("2026-08-23"), ScheduledOnly: true}
+		want := matches(query)
+		sort.Slice(want, func(i, j int) bool {
+			if want[i].Kickoff != want[j].Kickoff {
+				return want[i].Kickoff < want[j].Kickoff
+			}
+			if want[i].Home.ID != want[j].Home.ID {
+				return want[i].Home.ID < want[j].Home.ID
+			}
+			return want[i].Away.ID < want[j].Away.ID
+		})
+		query.TeamOrder = true
+		if got := ids(matches(query)); !reflect.DeepEqual(got, ids(want)) {
+			t.Fatalf("unlimited team-ordered selection = %v, want %v", got, ids(want))
+		}
+		query.Limit = 2
+		if got := ids(matches(query)); !reflect.DeepEqual(got, ids(want[:2])) {
+			t.Fatalf("team-ordered selection = %v, want %v", got, ids(want[:2]))
+		}
+	})
+
 	t.Run("lightweight rows skip stored detail; detailed rows reuse attribution", func(t *testing.T) {
 		query := matchQuery{From: day("2026-08-15"), To: day("2026-08-16")}
 		light := matches(query)
@@ -272,6 +295,7 @@ func TestMatchQueriesIntegration(t *testing.T) {
 			{"light window", matchQuery{From: day("2026-08-22"), To: day("2026-08-23")}, 10, 0},
 			// Correlated attribution runs for the 5 returned rows only (two refs + legacy check each).
 			{"detailed limit", matchQuery{From: day("2026-08-22"), To: day("2026-08-30"), Detail: true, Limit: 5}, 20, 15},
+			{"team-ordered upcoming", matchQuery{From: day("2026-08-22"), To: day("2026-09-20"), ScheduledOnly: true, TeamOrder: true, Limit: 12}, 22, 0},
 			{"upcoming", matchQuery{From: day("2026-08-22"), To: day("2026-09-20"), ScheduledOnly: true, Limit: 12}, 20, 0},
 		} {
 			var matchRows, subplanLoops float64

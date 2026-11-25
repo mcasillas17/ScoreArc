@@ -32,6 +32,8 @@ func TestPlayerReadIntegration(t *testing.T) {
 	exec(`INSERT INTO player_external_ref(source,source_id,player_id) VALUES ('espn','297287',$1),('other','297287',$2)`, testPlayerID, emptyPlayerID)
 	exec(`INSERT INTO squad_membership(competition_id,season_id,team_id,player_id,shirt_number,source) VALUES ('world-cup','2026','nat-arg',$1,9,'espn'),('world-cup','1998','nat-fra',$1,10,'espn')`, testPlayerID)
 	exec(`INSERT INTO player_season_stat(competition_id,season_id,player_id,team_id,appearances,sub_ins,goals,assists,shots,source) VALUES ('world-cup','2026',$1,'nat-arg',5,0,3,0,12,'espn')`, testPlayerID)
+	exec(`UPDATE player_season_stat st SET updated_at=sm.updated_at FROM squad_membership sm
+ WHERE st.player_id=$1 AND sm.player_id=st.player_id AND st.team_id=sm.team_id AND st.season_id=sm.season_id`, testPlayerID)
 	exec(`INSERT INTO team_external_ref(source,source_id,team_id) VALUES ('espn','222','nat-arg'),('other','222','nat-fra')`)
 	exec(`INSERT INTO player_team_history(player_id,team_source_id,team_name,seasons,ord,source) VALUES ($1,'222','Argentina','2025-CURRENT',0,'espn'),($1,'unknown','Uncurated FC','2024',1,'espn')`, testPlayerID)
 	// Eight proven appearances exceed the five-row output bound. Transfers keep the per-match team.
@@ -173,15 +175,20 @@ func TestPlayerReadIntegration(t *testing.T) {
 	if err := writer.ReplaceTeamHistory(ctx, uuid.MustParse(testPlayerID), "espn", history); err != nil {
 		t.Fatal(err)
 	}
+	exec(`UPDATE player SET flag_url='https://a.espncdn.com/mex.png', headshot_url='https://a.espncdn.com/portrait.png' WHERE id=$1`, testPlayerID)
+	exec(`UPDATE squad_membership SET position='M', updated_at=now() WHERE player_id=$1 AND season_id='2026'`, testPlayerID)
 	held, err := reader.Player(ctx, testPlayerID, "world-cup", "2026")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !held.TotalsRetained || held.Position != "M" || held.FlagURL == nil || *held.FlagURL != "https://a.espncdn.com/mex.png" || held.HeadshotURL == nil || *held.HeadshotURL != "https://a.espncdn.com/portrait.png" {
+		t.Fatalf("roster position or observed media missing: %+v", held)
 	}
 	if len(held.Career) != len(history) {
 		t.Fatal("writer career lost rows")
 	}
 	for i, stint := range held.Career {
-		if stint.TeamName != history[i].TeamName || stint.Seasons != history[i].Seasons {
+		if stint.TeamName != history[i].TeamName || stint.Seasons != history[i].Seasons || (history[i].CrestURL != "" && (stint.CrestURL == nil || *stint.CrestURL != history[i].CrestURL)) {
 			t.Fatalf("career %d differs from recorded writer input", i)
 		}
 		if i == 0 {

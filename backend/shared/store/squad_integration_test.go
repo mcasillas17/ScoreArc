@@ -240,13 +240,15 @@ func TestReplaceSquadStoresRosterOrderHeadshotAndTeamIdentity(t *testing.T) {
 	ctx := context.Background()
 
 	members := sampleSquadMembers()
+	members[1].FlagURL = "https://a.espncdn.com/mex.png"
+	members[1].Nationality = "Mexico"
 	members[1].HeadshotURL = "https://a.espncdn.com/p2.png"
 	replaceTestSquad(t, squadStore, []model.SquadMember{members[1], members[0]})
 	members[1].HeadshotURL = ""
 	replaceTestSquad(t, squadStore, []model.SquadMember{members[1], members[0]})
 
 	rows, err := pool.Query(ctx, `
-SELECT r.source_id, sm.roster_order, p.headshot_url
+SELECT r.source_id, sm.roster_order, p.headshot_url, p.flag_url
 FROM squad_membership sm
 JOIN player p ON p.id = sm.player_id
 JOIN player_external_ref r ON r.player_id = p.id AND r.source = 'espn'
@@ -258,9 +260,12 @@ WHERE sm.team_id = 'eng-arsenal' ORDER BY sm.roster_order`)
 	for rows.Next() {
 		var id string
 		var order int
-		var headshot *string
-		if err := rows.Scan(&id, &order, &headshot); err != nil {
+		var headshot, flag *string
+		if err := rows.Scan(&id, &order, &headshot, &flag); err != nil {
 			t.Fatal(err)
+		}
+		if id == "p2" && (flag == nil || *flag != "https://a.espncdn.com/mex.png") {
+			t.Fatalf("missing accepted flag: %v", flag)
 		}
 		got = append(got, fmt.Sprintf("%d:%s:%v", order, id, headshot != nil && *headshot == "https://a.espncdn.com/p2.png"))
 	}

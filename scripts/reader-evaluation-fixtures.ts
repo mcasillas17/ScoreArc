@@ -55,14 +55,34 @@ const argentina = { id: '202', displayName: 'Argentina', abbreviation: 'ARG',
   logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/202.png' };
 const france = { id: '478', displayName: 'France', abbreviation: 'FRA',
   logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/478.png' };
-// A synthetic transport input, not output copied from either adapter.
+// The synthetic ESPN event is one goal ahead of the preview reader so the evaluator exercises score drift.
 const scheduleEvent = {
   id: '401877007', date: '2026-07-09T00:00:00Z', league: { slug: 'fifa.world' }, season: { year: 2026 },
   competitions: [{ date: '2026-07-09T00:00:00Z', status: { type: { state: 'in', name: 'STATUS_IN_PROGRESS', shortDetail: "63'" }, displayClock: "63'" },
-    competitors: [{ homeAway: 'home', team: argentina, score: { value: 2 } }, { homeAway: 'away', team: france, score: { value: 1 } }], notes: [] }],
+    competitors: [{ homeAway: 'home', team: argentina, score: { value: 3 } }, { homeAway: 'away', team: france, score: { value: 1 } }], notes: [] }],
+};
+
+// The synthetic player, schedule, lineup and popup describe the same World Cup appearance.
+const coreLeague = 'https://sports.core.api.espn.com/v2/sports/soccer/leagues/fifa.world';
+const coreEvent = coreLeague + '/events/' + scheduleEvent.id;
+const popupSummary = {
+  header: { ...syntheticScope, id: scheduleEvent.id, competitions: scheduleEvent.competitions.map(game => ({
+    ...game, id: scheduleEvent.id, competitors: game.competitors.map(side => ({ ...side, id: side.team.id })),
+  })) },
+  rosters: [
+    { team: argentina, roster: [{ athlete: { id: '297287', displayName: 'Ali Avila' }, starter: true, stats: [{ name: 'totalGoals', value: 1 }] }] },
+    { team: france, roster: [{ athlete: { id: '123', displayName: 'Opponent' }, starter: true }] },
+  ],
 };
 
 function providerResponse(url: URL): unknown {
+  if (url.origin + url.pathname === coreLeague + '/seasons/2026/athletes/297287/eventlog') {
+    return { $ref: url.href, events: { pageIndex: 1, pageCount: 1, count: 1,
+      items: [{ played: true, teamId: '202', event: { $ref: coreEvent } }] } };
+  }
+  if (url.href === coreEvent + '/competitions/' + scheduleEvent.id + '/competitors/202/roster/297287') {
+    return { $ref: url.href, starter: true, subbedIn: { didSub: false }, subbedOut: { didSub: false } };
+  }
   const path = /^\/apis\/(?:site\/v2|v2|common\/v3)\/sports\/soccer\/([^/]+)\/(.+)$/.exec(url.pathname);
   if (!path) throw new Error('Unsupported offline request');
   const [, slug, route] = path;
@@ -85,8 +105,8 @@ function providerResponse(url: URL): unknown {
   if (route === 'teams' && slug === 'mex.1') return { sports: [{ leagues: [{ teams: teamIds.map(id => ({ team: { id } })) }] }] };
   if (route === 'summary') {
     if (url.searchParams.get('event') === '760490' && slug === 'fifa.world') return summary;
-    if (slug === 'concacaf.leagues.cup' && phase.events.some(event => event.id === url.searchParams.get('event')) ||
-        slug === 'fifa.world' && url.searchParams.get('event') === '401877007') return {};
+    if (slug === 'fifa.world' && url.searchParams.get('event') === scheduleEvent.id) return popupSummary;
+    if (slug === 'concacaf.leagues.cup' && phase.events.some(event => event.id === url.searchParams.get('event'))) return {};
   }
   if (slug === 'fifa.world') {
     if (route === 'athletes/297287') return athlete;
@@ -139,7 +159,7 @@ export async function createOfflineEvaluation() {
       }
       return new Response(response.body, { status: response.status, headers });
     }
-    if (!['https://site.api.espn.com', 'https://site.web.api.espn.com'].includes(url.origin)) throw new Error('Unsupported offline request');
+    if (!['https://site.api.espn.com', 'https://site.web.api.espn.com', 'https://sports.core.api.espn.com'].includes(url.origin)) throw new Error('Unsupported offline request');
     return Response.json(providerResponse(url));
   };
   return { manifest: OFFLINE_MANIFEST, readerOrigin, fetch: fetcher, now: () => fixedTime,

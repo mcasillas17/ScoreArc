@@ -23,6 +23,7 @@ type SquadMember struct {
 	// Provider CDN media only (cdnurl.ProviderMedia), or "" when the provider
 	// sent none or sent anything else.
 	HeadshotURL string
+	FlagURL     string
 	Stats       *PlayerSeasonStats
 }
 
@@ -47,5 +48,6 @@ type PlayerSeasonStats struct {
 type TeamHistoryEntry struct {
 	TeamSourceID string
 	TeamName     string
+	CrestURL     string
 	Seasons      string
 }

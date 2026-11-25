@@ -210,6 +210,9 @@ type SquadPlayer struct {
 	Nationality *string            `json:"nationality"`
 	HeadshotURL *string            `json:"headshotUrl"`
 	Stats       *PlayerSeasonStats `json:"stats"`
+	// These totals are held from another observation. The most recent
+	// accepted roster for this club did not supply them.
+	StatsRetained bool `json:"statsRetained,omitempty"`
 }
 
 type TeamRecord struct {

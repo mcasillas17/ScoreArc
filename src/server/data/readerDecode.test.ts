@@ -41,6 +41,25 @@ const cases = [
   ['bracket', decodeReaderBracket, bracket],
 ] as const;
 
+it('projects only current roster totals while the reader can also carry retained measurements', () => {
+  const measured = squad.find(member => member.stats !== null)!;
+  const retained = { ...measured, id: '999', statsRetained: true };
+  const expected = [measured, { ...measured, id: '999', stats: null }];
+  expect(decodeReaderSquad([measured, retained])).toEqual(expected);
+  expect(decodeReaderTeam({ ...team, squad: [measured, retained] }).squad).toEqual(expected);
+  for (const bad of [{ ...retained, statsRetained: 'yes' }, { ...retained, stats: null }]) {
+    expect(() => decodeReaderSquad([bad])).toThrow();
+  }
+});
+
+it('projects retained profile totals only when the wire observation is valid', () => {
+  const profile = vectors.player.reader.profile;
+  expect(decodeReaderPlayer({ ...profile, totalsRetained: true })).toEqual({ ...profile, totals: [] });
+  for (const invalid of [{ ...profile, totalsRetained: false }, { ...profile, totalsRetained: true, totals: [] }]) {
+    expect(() => decodeReaderPlayer(invalid)).toThrow('Invalid reader body');
+  }
+});
+
 describe('reader DTO decoding', () => {
   it.each(cases)('preserves every wire field and explicit null in %s', (_name, decode, raw) => {
     expect(decode(raw)).toEqual(raw);

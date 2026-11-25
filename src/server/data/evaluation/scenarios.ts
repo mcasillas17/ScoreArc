@@ -22,9 +22,6 @@ async function boundedIndex(rc: CompetitionSeason, store: DataStore) {
 }
 
 export async function runScenario(store: DataStore, sample: Sample, rc: CompetitionSeason, signal: AbortSignal, now: number, source: 'reader' | 'espn'): Promise<ScenarioResult> {
-  const scope = { competitionId: rc.competition.id, seasonId: rc.season.id };
-  // Only absent scope is supplied from the validated query; a contradictory scope survives.
-  const scoped = (matches: Match[]) => matches.map(match => ({ ...match, scope: match.scope ?? scope }));
   const result = (value: unknown): ScenarioResult => ({ value, issues: [] });
   const popup = async (matches: Match[], field: 'list' | 'team' | 'form', parent: unknown): Promise<ScenarioResult> => {
     const target = matches.find(match => match.id === sample.eventId);
@@ -33,10 +30,10 @@ export async function runScenario(store: DataStore, sample: Sample, rc: Competit
     return result({ [field]: parent, target, summary });
   };
   switch (sample.kind) {
-    case 'getMatches': return result(scoped(await store.getMatches(rc, sample.range!, signal)));
-    case 'getFixtures': return result(scoped(await store.getFixtures(rc, sample.range!, signal)));
-    case 'getLiveWindow': return result(scoped(await store.getLiveWindow(rc)));
-    case 'getUpcoming': return result(scoped(await store.getUpcoming(rc, sample.limit ?? 12, signal)));
+    case 'getMatches': return result(await store.getMatches(rc, sample.range!, signal));
+    case 'getFixtures': return result(await store.getFixtures(rc, sample.range!, signal));
+    case 'getLiveWindow': return result(await store.getLiveWindow(rc));
+    case 'getUpcoming': return result(await store.getUpcoming(rc, sample.limit ?? 12, signal));
     case 'getEditionTeams': return result(await store.getEditionTeams(rc));
     case 'getStandings': return result(await store.getStandings(rc));
     case 'getBracket': return result(await store.getBracket(rc));
@@ -44,19 +41,15 @@ export async function runScenario(store: DataStore, sample: Sample, rc: Competit
     case 'getLeaders': return result(await store.getLeaders(rc));
     case 'getSquad': return result(await store.getSquad(rc, sample.teamId!));
     case 'getPlayer': return result(await store.getPlayer(rc, sample.playerId!));
-    case 'getTeam': {
-      const team = await store.getTeam(rc, sample.teamId!);
-      return result(team && { ...team, schedule: scoped(team.schedule) });
-    }
+    case 'getTeam': return result(await store.getTeam(rc, sample.teamId!));
     case 'listPopup': {
-      const list = scoped(await store.getFixtures(rc, sample.range!, signal));
+      const list = await store.getFixtures(rc, sample.range!, signal);
       return popup(list, 'list', list);
     }
     case 'teamSchedule': {
       const team = await store.getTeam(rc, sample.teamId!);
       if (!team) return { value: { team: null, target: null, summary: null }, issues: ['target_missing'] };
-      const schedule = scoped(team.schedule);
-      const joined = await popup(schedule, 'team', { ...team, schedule });
+      const joined = await popup(team.schedule, 'team', team);
       if (!canonicalTeamId(team.team.id) || team.team.id !== sample.teamId) joined.issues.push('broken_link');
       return joined;
     }

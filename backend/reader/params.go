@@ -43,6 +43,7 @@ var errBadRange = errors.New("range must be YYYYMMDD-YYYYMMDD, ordered, and at m
 type matchQuery struct {
 	From, To      time.Time
 	ScheduledOnly bool
+	TeamOrder     bool
 	Detail        bool
 	Limit         int // 0 means every row in the window
 	Season        bool
@@ -87,7 +88,7 @@ func utcDay(now time.Time) time.Time {
 }
 
 func parseMatchQuery(raw string, now time.Time) (matchQuery, error) {
-	values, err := singleValues(raw, "scope", "range", "state", "detail", "limit")
+	values, err := singleValues(raw, "scope", "range", "state", "detail", "limit", "order")
 	if err != nil {
 		return matchQuery{}, err
 	}
@@ -127,6 +128,12 @@ func parseMatchQuery(raw string, now time.Time) (matchQuery, error) {
 			return matchQuery{}, errors.New("state must be 'scheduled'")
 		}
 		query.ScheduledOnly = true
+	}
+	if order, ok := values["order"]; ok {
+		if order != "teams" || !query.ScheduledOnly {
+			return matchQuery{}, errors.New("order=teams requires state=scheduled")
+		}
+		query.TeamOrder = true
 	}
 	if detail, ok := values["detail"]; ok {
 		if detail != "summary" {

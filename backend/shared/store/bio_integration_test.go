@@ -41,7 +41,7 @@ VALUES ($1,$2,'eng-arsenal',true)`,
 	return playerID
 }
 
-func TestPlayersNeedingBioHonorsLimitAndRequiresAppearance(t *testing.T) {
+func TestPlayersNeedingBioHonorsLimitAndRequiresEditionMembershipOrAppearance(t *testing.T) {
 	bioStore, pool := newIntegrationStore(t)
 	matchID := mustParticipationMatch(t, bioStore, pool)
 	for index := range 25 {
@@ -63,6 +63,83 @@ func TestPlayersNeedingBioHonorsLimitAndRequiresAppearance(t *testing.T) {
 	}
 	if _, selected := candidates["never-appeared"]; selected {
 		t.Fatal("player with no appearance was selected for a bio fetch")
+	}
+}
+
+func TestBioRetryLeavesRoomForLaterPlayersAndPreservesOldHistory(t *testing.T) {
+	ctx := context.Background()
+	s, pool, dsn := newIntegrationStoreDSN(t)
+	matchID := mustParticipationMatch(t, s, pool)
+	first := mustBioPlayer(t, s, pool, matchID, "missing-history", true)
+	second := mustBioPlayer(t, s, pool, matchID, "next-player", true)
+	third := mustBioPlayer(t, s, pool, matchID, "untried-player", true)
+	old := time.Now().UTC().Add(-90 * 24 * time.Hour).Truncate(time.Microsecond)
+	if err := s.ReplaceTeamHistory(ctx, first, "espn", []model.TeamHistoryEntry{{TeamSourceID: "222", TeamName: "Former club", Seasons: "2018"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE player SET bio_observed_at=$1,bio_fetched_at=$1 WHERE id=$2`, old, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE player SET bio_observed_at=$1,bio_fetched_at=$1 WHERE id IN ($2,$3)`, old.Add(time.Hour), second, third); err != nil {
+		t.Fatal(err)
+	}
+	queue, _ := newIngesterRoleStore(t, pool, dsn)
+	selectOne := func() uuid.UUID {
+		t.Helper()
+		rows, err := queue.PlayersNeedingBio(ctx, "espn", time.Now().Add(-30*24*time.Hour), 1, []string{"premier-league/2026-27"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("want exactly one eligible bio, got %v", rows)
+		}
+		for _, id := range rows {
+			return id
+		}
+		return uuid.Nil
+	}
+	if got := selectOne(); got != first {
+		t.Fatalf("oldest candidate=%v want %v", got, first)
+	}
+	if err := queue.DeferBioRetries(ctx, []uuid.UUID{first}, time.Now().Add(6*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got := selectOne(); got == first {
+		t.Fatal("deferred malformed history occupied the only batch slot")
+	}
+	if _, err := pool.Exec(ctx, `UPDATE player SET bio_retry_after=now()-interval '1 second' WHERE id=$1`, first); err != nil {
+		t.Fatal(err)
+	}
+	if got := selectOne(); got == first {
+		t.Fatal("repeated failure ranked ahead of untried stale histories")
+	}
+	if _, err := pool.Exec(ctx, `UPDATE player SET bio_fetched_at=now() WHERE id IN ($1,$2)`, second, third); err != nil {
+		t.Fatal(err)
+	}
+	if got := selectOne(); got != first {
+		t.Fatal("failed history did not return after its retry deadline")
+	}
+	var fetched, observed time.Time
+	var history int
+	if err := pool.QueryRow(ctx, `SELECT bio_fetched_at,bio_observed_at,(SELECT count(*) FROM player_team_history WHERE player_id=$1) FROM player WHERE id=$1`, first).Scan(&fetched, &observed, &history); err != nil {
+		t.Fatal(err)
+	}
+	if !fetched.Equal(old) || !observed.Equal(old) || history != 1 {
+		t.Fatalf("retry modified prior history: fetched=%s observed=%s rows=%d", fetched, observed, history)
+	}
+}
+
+func TestPlayersNeedingBioIncludesRosterMemberBeforeDebut(t *testing.T) {
+	bioStore, pool := newIntegrationStore(t)
+	matchID := mustParticipationMatch(t, bioStore, pool)
+	id := mustBioPlayer(t, bioStore, pool, matchID, "before-debut", false)
+	if _, err := pool.Exec(context.Background(), `INSERT INTO squad_membership
+ (competition_id,season_id,team_id,player_id,source) VALUES ('premier-league','2026-27','eng-arsenal',$1,'espn')`, id); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := bioStore.PlayersNeedingBio(context.Background(), "espn", time.Now(), 20, []string{"premier-league/2026-27"})
+	if err != nil || candidates["before-debut"] != id {
+		t.Fatalf("roster member missing from bio refresh: %v %v", candidates, err)
 	}
 }
 

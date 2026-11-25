@@ -163,6 +163,22 @@ func TestMapScoreboardResilience(t *testing.T) {
 	})
 }
 
+func TestMapScoreboardCarriesOnlyValidAlternateColours(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"123","date":"2026-01-01T00:00:00Z",
+		"status":{"type":{"state":"pre","completed":false,"name":"STATUS_SCHEDULED"}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","team":{"id":"359","displayName":"Arsenal","alternateColor":"003399"}},
+			{"homeAway":"away","team":{"id":"2","displayName":"Away","alternateColor":12}}
+		]}]}]}`)
+	matches, err := MapScoreboard(raw)
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("scoreboard: %+v, %v", matches, err)
+	}
+	if matches[0].Home.AlternateColor != "003399" || matches[0].Away.AlternateColor != "" {
+		t.Fatalf("alternate colours: %q, %q", matches[0].Home.AlternateColor, matches[0].Away.AlternateColor)
+	}
+}
+
 func TestMapScoreboardAcceptsNumericIdentityAndScores(t *testing.T) {
 	raw := []byte(`{"events":[{"id":123,"date":"2026-01-01T00:00:00Z",
 		"season":{"year":2026},

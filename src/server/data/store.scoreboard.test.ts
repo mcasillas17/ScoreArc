@@ -36,6 +36,25 @@ describe('shared scoreboard windows', () => {
     expect(matches.map(m => m.kickoff)).toEqual(raw.events.map(e => e.date));
   });
 
+  it('carries verified edition scope through every match window and orders simultaneous starts before limiting', async () => {
+    const now = () => Date.parse('2026-09-15T12:00Z');
+    const games = ['999', '111'].map((id, i) => {
+      const game = event(id, '2026-09-16T03:00Z');
+      game.status.type = { ...game.status.type, state: 'pre', completed: false };
+      const home = game.competitions[0].competitors.find(side => side.homeAway === 'home')!;
+      home.id = home.team.id = i === 0 ? '222' : '227'; // Querétaro, América
+      return game;
+    });
+    const store = createDataStore({ ...provider(games), now, cache: new TtlCache() });
+    const upcoming = await store.getUpcoming(mx, 1);
+    expect(upcoming.map(m => m.id)).toEqual(['111']);
+    for (const rows of [upcoming, await store.getFixtures(mx, '20260916-20260916'),
+      await store.getLiveWindow(mx), await store.getMatches(mx, '20260916-20260916')]) {
+      expect(rows.length).toBeGreaterThan(0);
+      for (const match of rows) expect(match.scope).toEqual({ competitionId: mx.competition.id, seasonId: mx.season.id });
+    }
+  });
+
   it('restores exact calendar rows and enriches only the deduplicated requested window', async () => {
     const inside = event('inside', '2026-09-15T03:00Z');
     const p = provider([inside, structuredClone(inside), event('outside', '2026-09-20T03:00Z')]);

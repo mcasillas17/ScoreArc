@@ -492,6 +492,10 @@ func TestTeamProfileIntegration(t *testing.T) {
 	if _, err := pool.Exec(context.Background(), `UPDATE team SET color='ffff91', alternate_color='000080' WHERE id='mex-america'`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(context.Background(), `UPDATE match SET home_score=0, away_score=0, status_name='STATUS_SCHEDULED'
+		WHERE id='018f0000-0000-7000-8000-000000000201'`); err != nil {
+		t.Fatal(err)
+	}
 	// Ages come from birth_date on the request's UTC date; a birth date after
 	// it is a data error, served as an unknown age, never a negative one.
 	if _, err := pool.Exec(context.Background(), `

@@ -69,6 +69,7 @@ type rawTeamHistory struct {
 	ID          flexibleString `json:"id"`
 	DisplayName string         `json:"displayName"`
 	Seasons     string         `json:"seasons"`
+	Logo        string         `json:"logo"`
 }
 
 func MapAthleteBio(raw []byte) ([]model.TeamHistoryEntry, error) {
@@ -89,6 +90,7 @@ func MapAthleteBio(raw []byte) ([]model.TeamHistoryEntry, error) {
 			TeamSourceID: string(entry.ID),
 			TeamName:     entry.DisplayName,
 			Seasons:      entry.Seasons,
+			CrestURL:     providerMediaURL(entry.Logo),
 		})
 	}
 	return entries, nil

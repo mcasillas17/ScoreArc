@@ -12,6 +12,8 @@ export function buildOutboundEndpoint(dependency: Dependency, address: string): 
   const url = URL.canParse(address) ? new URL(address) : undefined;
   if (!url) return 'other';
   if (dependency === 'reader') return readerRoutes.find(route => route.pattern.test(url.pathname))?.template ?? 'other';
+  if (url.hostname === 'sports.core.api.espn.com' && /^\/v2\/sports\/soccer\/leagues\/[^/]+\/events\/[^/]+\/competitions\/[^/]+\/competitors\/[^/]+\/roster\/[^/]+$/.test(url.pathname)) return 'player-lineup-entry';
+  if (url.hostname === 'sports.core.api.espn.com' && /^\/v2\/sports\/soccer\/leagues\/[^/]+\/seasons\/\d{4}\/athletes\/[^/]+\/eventlog$/.test(url.pathname)) return 'eventlog';
   const route = url.pathname.match(/^\/apis\/(?:site\/v2|v2|common\/v3)\/sports\/soccer\/[^/]+\/(.+)$/)?.[1];
   if (!route) return 'other';
   if (['scoreboard', 'summary', 'standings', 'statistics', 'news', 'teams'].includes(route)) return route;

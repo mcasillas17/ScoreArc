@@ -67,3 +67,12 @@ export const athleteOverviewUrl = (slug: string, athleteId: string) =>
 
 export const athleteBioUrl = (slug: string, athleteId: string) =>
   `${webCommon(slug)}/athletes/${encodeURIComponent(athleteId)}/bio`;
+
+// The seasonless core index mixes international and club matches.
+export const athleteEventLogUrl = (slug: string, year: number, athleteId: string) =>
+  `https://sports.core.api.espn.com/v2/sports/soccer/leagues/${encodeURIComponent(slug)}/seasons/${year}/athletes/${encodeURIComponent(athleteId)}/eventlog?limit=100`;
+
+export const athleteLineupEntryUrl = (slug: string, eventId: string, teamId: string, athleteId: string) => {
+  const event = encodeURIComponent(eventId);
+  return `https://sports.core.api.espn.com/v2/sports/soccer/leagues/${encodeURIComponent(slug)}/events/${event}/competitions/${event}/competitors/${encodeURIComponent(teamId)}/roster/${encodeURIComponent(athleteId)}`;
+};

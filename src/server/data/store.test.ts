@@ -142,7 +142,7 @@ describe('EspnReadThroughStore', () => {
   it('keeps season totals off a player identity without squad coverage', async () => {
     const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async () => athleteRaw });
     const scope: CompetitionSeason = { ...wc, season: { ...wc.season, resources: ['players'] } };
-    const profile = await store.getPlayer(scope, '42');
+    const profile = await store.getPlayer(scope, '297287');
     expect(profile?.totals).toEqual([]);
   });
 
@@ -390,6 +390,20 @@ describe('getTeam', () => {
     expect(urls).toHaveLength(4); // served from cache
   });
 
+  it('marks a successful but unscoped ESPN schedule inconclusive on cold and warm profile reads', async () => {
+    const { deps } = teamDeps();
+    const fetchJson = vi.fn(async (url: string) => url.includes('fixture=true') ? { events: [] } : deps.fetchJson(url));
+    const store = createDataStore({ ...deps, fetchJson });
+    for (const pass of [0, 1]) {
+      const fault = vi.fn();
+      const profile = await withHealthContext({ onDependencyFailure: fault }, () => store.getTeam(ligaMx, '227'));
+      expect(profile?.scheduleAvailability?.upcoming).toBe('unavailable');
+      expect(fault).toHaveBeenCalledWith('espn', { code: 'partial' });
+      if (pass === 1) expect(fetchJson).not.toHaveBeenCalled();
+      fetchJson.mockClear();
+    }
+  });
+
   it('retains a schedule failure only on the cached profile, keeping the healthy squad comparable', async () => {
     const { deps } = teamDeps();
     const fetchJson = vi.fn(async (url: string) => {
@@ -458,10 +472,32 @@ describe('getTeam', () => {
         .toBeLessThanOrEqual(new Date(schedule[i].kickoff).getTime());
     }
   });
+
+  it('uses the edition table when a national team profile reports another competition', async () => {
+    const profile = { team: { ...teamProfileRaw.team, id: '203', standingSummary: '10th in Concacaf Nations League' } };
+    const read = (standings: unknown) => createDataStore({ cache: new TtlCache(), fetchJson: async url =>
+      url.includes('/standings') ? standings : profile,
+    }).getTeam(wc, '203');
+    const scoped = await read(standingsRaw);
+    expect(scoped?.standing).toEqual({ rank: 1, competition: 'Group A' });
+    expect(scoped?.standingSummary).toBe('1st in Group A');
+    expect(scoped?.record?.gamesPlayed).toBe(3);
+    expect(await read({ ...standingsRaw, season: { year: 2022 } })).toMatchObject({ standing: null, standingSummary: null, record: null });
+  });
 });
 
 describe('getSquad', () => {
   const ligaMx = resolveSeason('liga-mx')!;
+
+  it('turns the squad age at midnight UTC even when the provider age and cached roster still reflect yesterday', async () => {
+    const raw = structuredClone(teamRosterRaw);
+    Object.assign(raw.athletes[0], { age: 19, dateOfBirth: '2006-11-24T08:00Z' });
+    const store = createDataStore({ fetchJson: async () => raw, cache: new TtlCache() });
+    vi.setSystemTime(new Date('2026-11-23T23:59:59Z'));
+    expect((await store.getSquad(ligaMx, '227'))[0].age).toBe(19);
+    vi.setSystemTime(new Date('2026-11-24T00:00:00Z'));
+    expect((await store.getSquad(ligaMx, '227'))[0].age).toBe(20);
+  });
 
   it('fetches only the roster and caches it', async () => {
     const urls: string[] = [];
@@ -492,7 +528,7 @@ describe('getSquad', () => {
 describe('getPlayer', () => {
   const ligaMx = resolveSeason('liga-mx')!;
 
-  it('fetches profile, overview and bio in parallel and caches', async () => {
+  it('keeps only verified Liga MX overview rows when the scoped log is unavailable and caches the profile', async () => {
     const urls: string[] = [];
     const store = createDataStore({
       fetchJson: async (url: string) => {
@@ -505,12 +541,12 @@ describe('getPlayer', () => {
     });
     const p = await store.getPlayer(ligaMx, '297287');
     expect(p!.name).toBe('Ali Avila');
-    expect(p!.gameLog).toHaveLength(5);
+    expect(p!.gameLog.map(row => row.eventId)).toEqual(['401877007', '401877015']);
     expect(p!.career).toHaveLength(4);
-    expect(urls).toHaveLength(3);
+    expect(urls).toHaveLength(5);
 
     await store.getPlayer(ligaMx, '297287');
-    expect(urls).toHaveLength(3); // cached
+    expect(urls).toHaveLength(5); // cached
   });
 
   // A dead sibling endpoint must not take the page down with it.

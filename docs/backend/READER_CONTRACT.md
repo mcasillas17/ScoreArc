@@ -332,8 +332,9 @@ one choke-point, `backend/reader/params.go`:
 | `detail=summary` | stored scorers, cards, stats, win probability and shootout detail; an explicit range is then limited to 14 named days (`getMatches`, `MAX_SUMMARY_DAYS`) |
 | `state=scheduled` | scheduled rows only; without `range`, today through 28 days ahead with a 12-row default (`getUpcoming`, `forwardRange`) |
 | `limit=N` | digits only, 1–100, earliest rows first |
+| `order=teams` with `state=scheduled` | break simultaneous kickoffs by canonical home and away team ID before limiting, as on the website |
 
-Rows are ordered by kickoff, then id. Filters and the limit run in
+The default order is kickoff, then id. Filters and the limit run in
 parameterized SQL on `match_comp_season_idx` before teams, detail blobs and
 the correlated attribution lookups are joined. A lightweight row keeps empty
 detail fields, and only the returned rows pay for detail. Each request runs two
@@ -635,10 +636,11 @@ reads ESPN; nothing in the frontend changed except the contract tests.
 | Field or behavior | Contract | Proof |
 |---|---|---|
 | `SquadPlayer.id` | The provider athlete id on the membership's source, from `player_external_ref`: the id the frontend keys player slugs by, never the canonical UUID. Several refs: the earliest `first_seen_at`, then `source_id`. A member with no ref fails the squad block closed | go-db: the recorded roster through `ReplaceSquad` serves exactly the vector's ids in provider order; a later second ref does not displace the first; a missing ref degrades the squad |
-| `age` | Whole years since `player.birth_date` on the request's UTC date (the handler's clock); a future birth date is `null` | go-db at the roster's recorded date reproduces all 31 recorded ESPN ages; a future birth date is `null` |
+| `age` | Whole years since `player.birth_date` on the request's UTC date. The current ESPN roster adapter uses the same calendar day even when the provider delays its reported birthday until Pacific midnight. Historical ESPN rosters keep their supplied ages. A future birth date yields `null` | go-db at the roster's recorded date reproduces all 31 recorded ESPN ages; a future birth date is `null` |
 | `headshotUrl` | The roster's `headshot.href`, kept only when it is https media on ESPN's CDN (`shared/cdnurl`, the rule asset mirroring uses) | go-db: the 2 recorded headshots; the mapper and `cdnurl` tests reject other hosts, credentials, ports and schemes |
 | Squad order | Provider roster order (`squad_membership.roster_order`); rows written before 0027 fall back to shirt number, then name | go-db: the vector's order |
 | `location` | The roster's `team.location` | go-db and TS: `América` |
+| `altColor` | The most recently accepted alternate colour from a full scoreboard poll, exposed with a leading `#`. Missing or conflicting observations preserve the held value. | Go mapper and `TestScoreboardTeamColoursFollowTheCrosswalkAndPreserveConflicts` |
 | `record` | W-D-L, games, points and goal difference from the team's first stored standing row | go-db: a standing row built from the recorded profile's record item serves exactly the frontend's record (`3-1-0`, 4, 10, +7) |
 | `standing`, `standingSummary` | `{rank, competition}` and `"<ordinal> in <competition>"` from that row, where `competition` carries the label. The label is the team's table name when the season holds several stored tables (`Group B`, `Apertura`), else the competition's stored name; an unnamed table among several serves both as `null` | TS: the frontend's own parser reads the reader sentence back as the reader standing; go-db: single-table, multi-table and unnamed-table cases; `TestOrdinal` |
 | `scheduleAvailability`, schedule `scope` | `available`/`available` with `scope` `{competitionId, seasonId}` on every schedule row (`TeamMatch` = `Match` + `scope`) | team-insights.json `readerTeam`; Go drift test between the two OpenAPI schemas |
@@ -696,9 +698,7 @@ into a URL. The existing website slug resolver and ESPN data source are unchange
 
 Identity is read even when the requested season has no squad, aggregate, career
 or appearance rows. `age` is computed from the stored birth date using the UTC
-calendar; absent/future dates are null. Position uses the held player position
-(or an empty string). Flag and headshot URLs remain null: flags are not stored, and the
-headshot T10.3 stores (migration 0027) is served on `SquadPlayer`, not yet here; they are never manufactured from a provider id. The scoped season
+calendar; absent/future dates are null. Position prefers the scoped roster position and falls back to held player identity. The profile serves the roster headshot and the observed nationality flag (0030). Missing assets stay null. The scoped season
 aggregate's team takes precedence over the latest scoped squad membership;
 jersey comes only from the selected team's membership. Missing team is null.
 
@@ -706,7 +706,7 @@ jersey comes only from the selected team's membership. Missing team is null.
 |---|---|---|
 | `totals` | 15 / 15 (empty without an aggregate row) | The fifteen stored `player_season_stat` measurements, in documented schema order; null stays null, zero stays zero. Display is the decimal value or empty for unknown. No summing incomplete appearances or guessing ESPN's combined starts/substitute display. |
 | `gameLog` | 5 / 5 | Latest live/finished rows with positive play evidence in the requested competition/season, ordered by kickoff descending then match UUID descending. No pagination or larger limit in this slice. |
-| `career` | 50 / 50 | First fifty held stints by provider `ord`, then team source id and seasons. Source-qualified team crosswalk joins yield a canonical team id and held crest; unresolved teams retain name/seasons with null id/crest. |
+| `career` | 50 / 50 | First fifty held stints by provider `ord`, then team source id and seasons. Source-qualified team crosswalk joins yield a canonical team id and held crest; unresolved teams retain name, seasons and any observed career crest with a null canonical id (0030). |
 
 The nullable career `teamId` is an intentional translation from the frontend's
 provider string. Callers must keep unknown clubs unlinked. The season label uses
@@ -721,7 +721,7 @@ while the provider event id is rejected there. T16.3 resolves the provider
 athlete reference to the canonical profile, then normalizes game-log match/side
 references through the read-only crosswalk endpoint. `getPlayer` belongs to the
 same source group as the other match-id methods. This reader
-log is competition/season scoped; ESPN's overview can mix competitions. Scores
+log is competition/season scoped. The website builds its ESPN log from the edition’s played-event index, team schedules and verified lineups. Regular starters ordinarily need five match summaries. Sparse or bench-heavy logs can also check up to 24 small lineup entries and up to five additional summaries, within a shared three-second deadline. Its fallback overview retains only explicitly attributed rows and records partial evidence. Scores
 are home-away regulation scores; W/L/D is from the player's per-match team and
 regulation score for finished matches only (a shootout draw stays D). Live or
 missing scores leave result empty. Transfers do not rewrite past teams.
@@ -856,11 +856,23 @@ and real Postgres reads prove accepted writes and least-privilege access.
   is not an empty observation. Malformed or explicitly incomplete nested input
   preserves retained values and their observation time. Nullable measurements
   remain valid inside a complete collection.
+- The public squad and embedded team roster keep the last measured season totals.
+  A player has `statsRetained: true` when their totals come from a different
+  club, source or roster write. The stored membership and totals share the same
+  transaction timestamp when supplied together. The website shows only totals
+  supplied with the latest roster. For example, the MLS playoff roster can omit
+  regular-season measurements for every player. After a played match finalizes,
+  its two clubs become eligible for another roster read on a slow tick, subject
+  to the existing per-club backoff and edition checks.
 - Career uses `player.bio_observed_at`, atomically written with history, including a
   validated empty history. Supplied history completeness and every row are validated
   before replacement. It is player-global, not made dormant by the season
   in the route. The existing provider's explicit athlete-not-found response
-  still maps to an accepted empty career; bio eligibility and cadence are unchanged.
+  still maps to an accepted empty career. The ingester selects at most 20
+  players per slow tick. Successful careers are due again after 30 days.
+  A failed fetch or write sets `player.bio_retry_after` six hours ahead.
+  Once eligible, a retry ranks behind players whose last fetch or retry is older.
+  The retry changes only scheduling. Prior history and observation times survive.
 - Both new player observation columns start null. Older `updated_at` and
   `bio_fetched_at` values could have been renewed by malformed input accepted by
   prior mappers, so neither is backfilled as validated evidence. Refresh scheduling

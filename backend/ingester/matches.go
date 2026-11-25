@@ -276,6 +276,9 @@ func (r *runner) processMatches(
 			} else if didFinalize {
 				result.finalized = true
 				matchActive = false
+				if !isTerminalWithoutSummary(match) {
+					r.markMatchSquadsPending(comp.ID, season.ID, providerHome.ID, providerAway.ID)
+				}
 			}
 			r.mirrorCrest(ctx, match.Home)
 			r.mirrorCrest(ctx, match.Away)
@@ -413,6 +416,7 @@ func (r *runner) processMatches(
 				} else if didFinalize {
 					result.finalized = true
 					matchActive = false
+					r.markMatchSquadsPending(comp.ID, season.ID, providerHome.ID, providerAway.ID)
 					// The stream is complete at full time. Fetching it once
 					// here, rather than on every live poll, bounds the core API
 					// to roughly two requests per match.
