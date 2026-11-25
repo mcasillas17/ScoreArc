@@ -48,19 +48,19 @@ func TestMapOfficialsMapsRecordedCrew(t *testing.T) {
 	}
 }
 
-func TestMapOfficialsDropsIdentitylessEntries(t *testing.T) {
-	raw := []byte(`{"items":[
-		{"id":"","fullName":"Has no id"},
-		{"id":"2","fullName":""},
-		{"id":"3","fullName":"Assistant","position":{"name":"Assistant Referee","id":"2"},"order":2}
-	]}`)
-
-	officials, err := MapOfficials(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(officials) != 1 || officials[0].SourceID != "3" {
-		t.Fatalf("officials = %#v, want only id 3", officials)
+func TestMapOfficialsRejectsUnidentifiableOrDuplicateCrew(t *testing.T) {
+	for name, bad := range map[string]string{
+		"missing id": `{"fullName":"Assistant"}`,
+		"blank name": `{"id":"2","fullName":" "}`,
+		"padded id":  `{"id":" 2","fullName":"Assistant"}`,
+		"duplicate":  `{"id":"1","fullName":"Another official"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			crew, err := MapOfficials([]byte(`{"items":[{"id":"1","fullName":"Referee"},` + bad + `]}`))
+			if err == nil || len(crew) != 0 {
+				t.Fatalf("crew=%v err=%v, want rejected capture", crew, err)
+			}
+		})
 	}
 }
 

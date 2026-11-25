@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
@@ -61,11 +63,65 @@ func FetchPlaysPage(
 }
 
 type rawPlayPage struct {
-	Count     int       `json:"count"`
-	PageIndex int       `json:"pageIndex"`
-	PageSize  int       `json:"pageSize"`
-	PageCount int       `json:"pageCount"`
-	Items     []rawPlay `json:"items"`
+	Count      int             `json:"count"`
+	PageIndex  int             `json:"pageIndex"`
+	PageSize   int             `json:"pageSize"`
+	PageCount  int             `json:"pageCount"`
+	Items      []rawPlay       `json:"items"`
+	Total      json.RawMessage `json:"total"`
+	TotalCount json.RawMessage `json:"totalCount"`
+	Offset     json.RawMessage `json:"offset"`
+	Limit      json.RawMessage `json:"limit"`
+	Truncated  json.RawMessage `json:"truncated"`
+	HasMore    json.RawMessage `json:"hasMore"`
+	Next       json.RawMessage `json:"next"`
+	NextPage   json.RawMessage `json:"nextPage"`
+	Pagination json.RawMessage `json:"pagination"`
+}
+
+// Optional counts, continuations and nested pagination must describe the same
+// page as the four required core counters. Items have already been decoded.
+func (p rawPlayPage) validateMetadata() error {
+	meta := map[string]json.RawMessage{
+		"total": p.Total, "totalCount": p.TotalCount, "offset": p.Offset, "limit": p.Limit,
+		"truncated": p.Truncated, "hasMore": p.HasMore, "next": p.Next, "nextPage": p.NextPage, "pagination": p.Pagination,
+	}
+	want := map[string]int{
+		"count": p.Count, "total": p.Count, "totalCount": p.Count,
+		"pageCount": p.PageCount, "pageIndex": p.PageIndex, "pageSize": p.PageSize, "limit": p.PageSize,
+		"offset": max(0, p.PageIndex-1) * p.PageSize,
+	}
+	morePages := p.Count > 0 && p.PageIndex < p.PageCount
+	for depth := 0; ; depth++ {
+		for key, expected := range want {
+			if raw := meta[key]; raw != nil {
+				value := -1
+				if err := json.Unmarshal(raw, &value); err != nil || value != expected {
+					return fmt.Errorf("play stream has inconsistent %s", key)
+				}
+			}
+		}
+		if truncated := meta["truncated"]; truncated != nil && string(truncated) != "false" {
+			return fmt.Errorf("play stream has incomplete truncated marker")
+		}
+		if more := meta["hasMore"]; more != nil && string(more) != strconv.FormatBool(morePages) {
+			return fmt.Errorf("play stream hasMore disagrees with pageCount")
+		}
+		for _, key := range []string{"next", "nextPage"} {
+			if next := meta[key]; next != nil && !morePages && string(next) != "null" && string(next) != `""` {
+				return fmt.Errorf("play stream has a next page after pageCount")
+			}
+		}
+		nested := meta["pagination"]
+		if nested == nil {
+			return nil
+		}
+		// Bound repeated decoding of provider-controlled nested objects.
+		meta = nil
+		if depth >= 4 || json.Unmarshal(nested, &meta) != nil || meta == nil {
+			return fmt.Errorf("play stream has invalid pagination metadata")
+		}
+	}
 }
 
 type rawPlay struct {
@@ -119,7 +175,9 @@ type rawPlayParticipant struct {
 // It does NOT fetch anything. Every id it produces is parsed out of a $ref
 // string already in the payload.
 func MapPlays(raw []byte) (model.PlayStream, error) {
-	var page rawPlayPage
+	// A missing or null counter leaves the sentinel in place. Zero can be
+	// positive evidence of an empty stream only when ESPN actually sent it.
+	page := rawPlayPage{Count: -1, PageIndex: -1, PageSize: -1, PageCount: -1}
 	if err := json.Unmarshal(raw, &page); err != nil {
 		return model.PlayStream{}, fmt.Errorf("decode play stream: %w", err)
 	}
@@ -137,10 +195,18 @@ func MapPlays(raw []byte) (model.PlayStream, error) {
 	// Provider order is the match's order. The ordinal is offset by the page
 	// so page two continues page one rather than restarting.
 	base := (page.PageIndex - 1) * page.PageSize
+	seen := make(map[string]struct{}, len(page.Items))
 	for index, item := range page.Items {
 		if item.ID == "" {
 			return model.PlayStream{}, fmt.Errorf("play %d: missing provider id", base+index)
 		}
+		if strings.TrimSpace(item.ID) != item.ID {
+			return model.PlayStream{}, fmt.Errorf("play %d: invalid provider id", base+index)
+		}
+		if _, exists := seen[item.ID]; exists {
+			return model.PlayStream{}, fmt.Errorf("duplicate play id %s", item.ID)
+		}
+		seen[item.ID] = struct{}{}
 		period, err := mapPlayPeriod(item.Period.Number)
 		if err != nil {
 			return model.PlayStream{}, fmt.Errorf("play %s period: %w", item.ID, err)
@@ -196,17 +262,26 @@ func MapPlays(raw []byte) (model.PlayStream, error) {
 }
 
 func validatePlayPage(page rawPlayPage) error {
+	if page.Items == nil {
+		return fmt.Errorf("play stream requires an items array")
+	}
 	if page.Count < 0 {
 		return fmt.Errorf("play stream count must be non-negative")
+	}
+	if page.PageIndex < 0 || page.PageSize < 0 || page.PageCount < 0 {
+		return fmt.Errorf("play stream requires non-negative pageIndex, pageSize and pageCount")
 	}
 	// ESPN's real empty envelope ignores the requested page controls and
 	// returns pageIndex=0/pageSize=25/pageCount=0. It is a successful, explicit
 	// empty result, not the silent page-size degradation guarded below.
-	if page.Count == 0 && page.PageCount == 0 {
+	if page.Count == 0 {
 		if len(page.Items) != 0 {
 			return fmt.Errorf("play stream count is zero with non-empty items")
 		}
-		return nil
+		if page.PageIndex > 1 || page.PageCount > 1 {
+			return fmt.Errorf("play stream empty result declares multiple pages")
+		}
+		return page.validateMetadata()
 	}
 	if page.PageIndex < 1 {
 		return fmt.Errorf("play stream pageIndex must be at least 1")
@@ -214,16 +289,19 @@ func validatePlayPage(page rawPlayPage) error {
 	if page.PageSize < 1 {
 		return fmt.Errorf("play stream pageSize must be at least 1")
 	}
-	if page.PageCount < 0 {
-		return fmt.Errorf("play stream pageCount must be non-negative")
-	}
-	if page.PageCount == 0 && page.Count != 0 {
+	if page.PageCount == 0 {
 		return fmt.Errorf("play stream pageCount is zero for non-empty stream")
 	}
-	if page.PageCount > 0 && page.PageIndex > page.PageCount {
+	if page.PageIndex > page.PageCount {
 		return fmt.Errorf("play stream pageIndex exceeds pageCount")
 	}
-	return nil
+	if len(page.Items) > page.Count || len(page.Items) > page.PageSize {
+		return fmt.Errorf("play stream items exceed count or pageSize")
+	}
+	if page.PageIndex-1 > (math.MaxInt-len(page.Items))/page.PageSize {
+		return fmt.Errorf("play stream page offset exceeds integer range")
+	}
+	return page.validateMetadata()
 }
 
 func mapPlayPeriod(raw json.RawMessage) (*int, error) {

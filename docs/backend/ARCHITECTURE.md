@@ -388,9 +388,13 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   finalized rows immutable. Failed finals remain queryable through the
   unfinalized backlog; persisted `bracket_required` classification prevents a
   restart from losing knockout safety.
-- Once a match finalizes, the ingester immediately attempts both additive
-  full-time captures: officials and fixed odds. An explicit empty crew or a
-  no-market odds response is a durable completion, not a missing row to retry.
+- After a match finalizes, ESPN's plays, officials and fixed odds each complete
+  independently. A verified empty `items` array can complete a capture,
+  including a match with no recorded plays, crew or markets. A missing, moved
+  or malformed collection, incomplete pagination or an unidentified row
+  leaves that match's affected capture pending. The slow tick retries plays
+  that lack an archive record. Officials and fixed odds use their persisted
+  retry times. A repaired response can complete the capture after a restart.
 - Bracket metadata is authoritative for knockout round and placeholders. A
   shootout winner follows the final shootout aggregate (summary header, else the
   bracket's or scoreboard's structured totals, else the note), else ESPN's own

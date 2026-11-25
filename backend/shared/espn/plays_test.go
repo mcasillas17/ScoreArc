@@ -243,6 +243,59 @@ func TestMapPlaysRejectsInvalidPagination(t *testing.T) {
 	}
 }
 
+func TestMapPlaysRequiresAnExplicitCompleteEmptyPage(t *testing.T) {
+	const empty = `{"count":0,"pageIndex":0,"pageSize":25,"pageCount":0,"items":[]}`
+	for _, tc := range []struct{ name, raw string }{
+		{"moved items", strings.Replace(empty, `"items":[]`, `"data":{"items":[]}`, 1)},
+		{"null items", strings.Replace(empty, "[]", "null", 1)},
+		{"missing count", strings.Replace(empty, `"count":0,`, "", 1)},
+		{"null count", strings.Replace(empty, `"count":0`, `"count":null`, 1)},
+		{"missing page index", strings.Replace(empty, `"pageIndex":0,`, "", 1)},
+		{"null page size", strings.Replace(empty, `"pageSize":25`, `"pageSize":null`, 1)},
+		{"missing page count", strings.Replace(empty, `"pageCount":0,`, "", 1)},
+		{"later empty page", strings.Replace(empty, `"pageIndex":0`, `"pageIndex":2`, 1)},
+		{"truncated", strings.Replace(empty, `"items"`, `"truncated":true,"items"`, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := MapPlays([]byte(tc.raw)); err == nil {
+				t.Fatalf("accepted unverified empty play page %s", tc.raw)
+			}
+		})
+	}
+}
+
+func TestMapPlaysRejectsAmbiguousPlayID(t *testing.T) {
+	for _, duplicate := range []string{" ", "1", " 1 "} {
+		raw := `{"count":2,"pageIndex":1,"pageSize":1000,"pageCount":1,"items":[{"id":"1"},{"id":"` + duplicate + `"}]}`
+		if _, err := MapPlays([]byte(raw)); err == nil {
+			t.Errorf("accepted ambiguous second play id %q", duplicate)
+		}
+	}
+}
+
+func TestMapPlaysHonorsPageContinuation(t *testing.T) {
+	for _, tc := range []struct {
+		name, counters, marker string
+		ok                     bool
+	}{
+		{"full page is truncated", `"count":1,"pageIndex":1,"pageCount":1`, `"truncated":true`, false},
+		{"last page has more", `"count":2,"pageIndex":2,"pageCount":2`, `"hasMore":true`, false},
+		{"last page has next link", `"count":2,"pageIndex":2,"pageCount":2`, `"next":"/plays?page=3"`, false},
+		{"last page has next number", `"count":2,"pageIndex":2,"pageCount":2`, `"nextPage":3`, false},
+		{"earlier page is truncated", `"count":2,"pageIndex":1,"pageCount":2`, `"truncated":true`, false},
+		{"earlier page has more", `"count":2,"pageIndex":1,"pageCount":2`, `"hasMore":true,"nextPage":2`, true},
+		{"last page has no next", `"count":2,"pageIndex":2,"pageCount":2`, `"hasMore":false,"nextPage":null,"next":""`, true},
+		{"nested incomplete last page", `"count":1,"pageIndex":1,"pageCount":1`, `"pagination":{"hasMore":true}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := MapPlays([]byte(`{` + tc.counters + `,` + tc.marker + `,"pageSize":1000,"items":[{"id":"1"}]}`))
+			if (err == nil) != tc.ok {
+				t.Fatalf("page accepted = %v, want %v (err %v)", err == nil, tc.ok, err)
+			}
+		})
+	}
+}
+
 func TestFetchPlaysPageRefusesAnUnexpectedPageSize(t *testing.T) {
 	client := NewWithOptions(Options{
 		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
