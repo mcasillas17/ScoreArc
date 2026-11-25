@@ -1,6 +1,15 @@
 # ScoreArc operations in Grafana
 
-The **ScoreArc operations** dashboard (UID `scorearc-operations`) combines the sampled reader trial, resource age, ESPN feed changes, physical HTTP failures and p95 latency, and the ingester's poll, run and recovery records. A read-only Neon login supplies ingestion history and captured changes even while the comparison trial is off. Loki retains seven days of structured telemetry.
+Open [ScoreArc operations](https://grafana.scorearc.futbol/d/scorearc-operations) for sampling rate, disagreement, ESPN fallbacks, HTTP failures, failed ingester runs and new ESPN feed changes. Use the dashboard links at the top to investigate the same time range.
+
+| Dashboard | What to look for |
+| --- | --- |
+| [Reader comparisons](https://grafana.scorearc.futbol/d/scorearc-reader-comparisons) | Sample size, comparable reads, endpoint outcomes, provider errors, usability and resource age |
+| [HTTP health](https://grafana.scorearc.futbol/d/scorearc-http-health) | Physical request volume, failure rate, status codes and p95 latency by service and endpoint |
+| [Ingester health](https://grafana.scorearc.futbol/d/scorearc-ingester-health) | Latest match polls, recent runs and unresolved match recovery |
+| [ESPN data quality](https://grafana.scorearc.futbol/d/scorearc-espn-data-quality) | Provider field and statistic changes, example payload fragments and recorded replay coverage |
+
+The overview HTTP rate weights each observed non-cancelled request equally. An empty window has no rate. Failed runs count jobs started in the selected window. New feed changes count signatures first seen in the window. The detail table also includes repeat sightings. A read-only Neon login supplies ingestion history and captured changes. Loki retains seven days of structured telemetry.
 
 ## Reading the readiness panels
 
@@ -11,7 +20,7 @@ The **ScoreArc operations** dashboard (UID `scorearc-operations`) combines the s
 
 ### Reviewing an ESPN change
 
-Open the **ESPN feed changes** row to see the provider path, its first request competition and a bounded example. The biography sweep uses one ESPN competition namespace for players across all editions. For an added field or named statistic, check its meaning and units against examples from the relevant competitions. If ScoreArc should use it, add a recorded case and expected reader fields, update the mapper and persistence as needed, then replay it through Postgres and the HTTP reader. Mark an intentionally unused shape as reviewed in the detector baseline to stop recording new sightings. The first discovery remains available in its original time range.
+Open **ESPN data quality → ESPN feed changes** to see the provider path, its first request competition and a bounded example. The biography sweep uses one ESPN competition namespace for players across all editions. For an added field or named statistic, check its meaning and units against examples from the relevant competitions. If ScoreArc should use it, add a recorded case and expected reader fields, update the mapper and persistence as needed, then replay it through Postgres and the HTTP reader. Mark an intentionally unused shape as reviewed in the detector baseline to stop recording new sightings. The first discovery remains available in its original time range.
 
 For a missing required field, unexpected status or changed type, check the corresponding ingester run and the most recent accepted observation. Optional fields can vary across players and competitions. Use a replay that reproduces the provider change before updating the contract.
 

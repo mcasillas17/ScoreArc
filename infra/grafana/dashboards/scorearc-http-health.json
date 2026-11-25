@@ -1,0 +1,202 @@
+{
+  "uid": "scorearc-http-health",
+  "title": "HTTP health",
+  "tags": [
+    "scorearc",
+    "scorearc-operations-suite",
+    "scorearc-operations-detail"
+  ],
+  "editable": false,
+  "timezone": "utc",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "scorearc-operations-suite"
+      ],
+      "asDropdown": false,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Endpoint failure rate",
+      "description": "Failed HTTP attempts divided by completed attempts at each boundary. Cancellations are excluded; HTTP 200 responses with body failures count as failures.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * avg_over_time({job=\"scorearc\",event=\"scorearc_http\"} | json direction, dependency, method, endpoint, outcome | outcome!=\"\" | outcome!=\"cancelled\" | label_format failure=`{{ if eq .outcome \"success\" }}0{{ else }}1{{ end }}` | unwrap failure | __error__=\"\" [$__interval]) by (service, direction, dependency, method, endpoint)",
+          "queryType": "range",
+          "legendFormat": "{{service}} {{direction}} · {{dependency}} {{method}} {{endpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Endpoint errors by status and cause",
+      "description": "Failed attempts per interval with the observed HTTP status, failure type, and application code when available.",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service, direction, dependency, method, endpoint, status, outcome, appError) (count_over_time({job=\"scorearc\",event=\"scorearc_http\"} | json direction, dependency, method, endpoint, outcome, status, appError | __error__=\"\" | outcome!=\"\" | outcome!=\"success\" | outcome!=\"cancelled\" | label_format status=`{{ if .status }}{{ .status }}{{ else }}no_response{{ end }}` [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{service}} {{direction}} · {{dependency}} {{method}} {{endpoint}} · {{status}} {{outcome}} {{appError}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Endpoint latency · p95",
+      "description": "95th percentile of recorded request durations at each boundary, including failed and cancelled attempts.",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "quantile_over_time(0.95, {job=\"scorearc\",event=\"scorearc_http\"} | json direction, dependency, method, endpoint, durationMs | unwrap durationMs | __error__=\"\" [$__interval]) by (service, direction, dependency, method, endpoint)",
+          "queryType": "range",
+          "legendFormat": "{{service}} {{direction}} · {{dependency}} {{method}} {{endpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Endpoint request volume",
+      "description": "Observed HTTP attempts per interval, including cancellations and retries. Frontend and Go service boundaries are separate series.",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service, direction, dependency, method, endpoint, outcome) (count_over_time({job=\"scorearc\",event=\"scorearc_http\"} | json direction, dependency, method, endpoint, outcome | __error__=\"\"  [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{service}} {{direction}} · {{dependency}} {{method}} {{endpoint}} · {{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    }
+  ]
+}

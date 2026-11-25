@@ -8,12 +8,13 @@ Unrelated inventory observations below retain their original dates.
 The comparison remains configured at 1%. Through 9:44 p.m. Pacific, one
 2002 World Cup player page accounted for 34 of the 42 unavailable sampled
 reads since the collector update. At inspection, production held no 2002
-squad memberships. [Grafana window](https://grafana.scorearc.futbol/d/scorearc-operations?from=1795581823000&to=1795585470000)
+squad memberships. [Grafana window](https://grafana.scorearc.futbol/d/scorearc-reader-comparisons?from=1795581823000&to=1795585470000)
 
-The manual importer reproduced 32 entrants, 30 available squads, and 688 players
-in local Postgres. China and Senegal returned 404 for their historical rosters.
-Production coverage for this edition requires an operator to apply the import
-and verify the reader. [2002 roster import and verification](backend/RELEASES.md#2002-world-cup-rosters)
+After #318 released, the production import committed at 10:32 p.m. Pacific
+on November 24. The public Go reader returned 32 entrants, 30 edition rosters
+and 688 memberships. China and Senegal returned 404 from ESPN and remain
+unavailable. Croatia’s squad includes Davor Vugrinec, shirt 7, with two
+appearances including one as a substitute. [2002 roster import and verification](backend/RELEASES.md#2002-world-cup-rosters)
 
 ### November 24 production comparison audit
 
@@ -22,7 +23,7 @@ From activation at **22:32:28 UTC on November 22** through **09:34:54 UTC on Nov
 and 81 inconclusive reads. The sample covered 128 of 13,705 operations (0.93%).
 One operation can perform dozens of reads. Of the 128, ESPN served 111, ScoreArc
 served one, and 16 returned errors. All 16 were HTTP 500s on archived World Cup
-player pages before #315 deployed. [Grafana audit window](https://grafana.scorearc.futbol/d/scorearc-operations/scorearc-operations?from=1795386748000&to=1795512894000)
+player pages before #315 deployed. [Grafana audit window](https://grafana.scorearc.futbol/d/scorearc-reader-comparisons?from=1795386748000&to=1795512894000)
 
 The endpoint counts come from all 483 production mismatch records. Each Vercel log
 kept up to eight differing field paths. 330 records reached the truncation limit.

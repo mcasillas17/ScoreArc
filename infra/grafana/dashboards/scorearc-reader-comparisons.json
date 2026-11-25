@@ -1,0 +1,405 @@
+{
+  "uid": "scorearc-reader-comparisons",
+  "title": "Reader comparisons",
+  "tags": [
+    "scorearc",
+    "scorearc-operations-suite",
+    "scorearc-operations-detail"
+  ],
+  "editable": false,
+  "timezone": "utc",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "scorearc-operations-suite"
+      ],
+      "asDropdown": false,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Sampled operations",
+      "description": "Count of observed operations selected for dual reads in the chosen period.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort | __error__=\"\" | type=\"operation\" | cohort=\"sample\" [$__range])) or vector(0)",
+          "queryType": "instant",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Comparable reads",
+      "description": "Reads that returned sufficiently complete results from both providers to establish agreement or disagreement.",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, outcome | __error__=\"\" | type=\"read\" | outcome=~\"match|mismatch\" [$__range])) or vector(0)",
+          "queryType": "instant",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Sampled read outcomes by endpoint",
+      "description": "Count per interval. An ESPN failure makes the comparison inconclusive. News and control reads do not contribute.",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint, outcome) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, endpoint, outcome | __error__=\"\" | type=\"read\" | outcome=~\"match|mismatch|reader_error|inconclusive\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{endpoint}} · {{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Operations by cohort and source served",
+      "description": "Each joined operation counts once. The decision explains why an operation fell back or failed.",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (cohort, served, decision) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort, served, decision | __error__=\"\" | type=\"operation\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{cohort}} · {{served}} · {{decision}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Sampled read errors by provider",
+      "description": "Logical provider failures per interval with error category and available HTTP status. A read can record evidence from both providers.",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint, readerError, readerStatus) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, outcome, endpoint, readerError, readerStatus | __error__=\"\" | type=\"read\" | outcome=~\"reader_error|inconclusive\" | readerError!=\"\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "reader · {{endpoint}} · {{readerError}} {{readerStatus}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (endpoint, espnError, espnStatus) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, outcome, endpoint, espnError, espnStatus | __error__=\"\" | type=\"read\" | outcome=~\"reader_error|inconclusive\" | espnError!=\"\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "espn · {{endpoint}} · {{espnError}} {{espnStatus}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Reader usability by endpoint",
+      "description": "Percent of completed sampled logical reads that returned a reader result without a reader dependency fault. Includes ESPN failures and mismatches. An interval with no measured reads has no rate.",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * avg_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort, endpoint, readerResult | type=\"read\" | cohort=\"sample\" | readerResult=~\"usable|unavailable\" | label_format usable=`{{ if eq .readerResult \"usable\" }}1{{ else }}0{{ end }}` | unwrap usable | __error__=\"\" [$__interval]) by (endpoint)",
+          "queryType": "range",
+          "legendFormat": "{{endpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Reader attempts by endpoint",
+      "description": "Count of completed sampled logical reads behind the usability rate. A join can contain several reads. ESPN-only controls and news make no reader attempt.",
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint, readerResult) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort, endpoint, readerResult | type=\"read\" | cohort=\"sample\" | readerResult=~\"usable|unavailable\" | __error__=\"\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{endpoint}} · {{readerResult}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Oldest observed resource at read time",
+      "description": "Maximum seconds since the ESPN observation when a sampled reader resource was checked, including cached responses and stale observations rejected by the reader policy. Finalized and unknown clocks appear in the evidence counts.",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time({job=\"scorearc\",event=\"scorearc_reader_resource\",service=\"frontend\"} | json endpoint, resource, clock, freshness, ageSeconds | clock=\"observed\" | unwrap ageSeconds | __error__=\"\" [$__interval]) by (endpoint, resource, freshness)",
+          "queryType": "range",
+          "legendFormat": "{{endpoint}} · {{resource}} · {{freshness}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Reader resource evidence at read time",
+      "description": "Counts of validated resource checks. One logical read can check multiple resources. Finalized takes precedence when both clocks exist. Missing observation and finalization clocks appear as unknown. Failed requests without resource metadata contribute only to the logical read panels.",
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint, resource, clock, freshness, availability) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_resource\",service=\"frontend\"} | json endpoint, resource, clock, freshness, availability | __error__=\"\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{endpoint}} · {{resource}} · {{clock}} · {{freshness}} · {{availability}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    }
+  ]
+}

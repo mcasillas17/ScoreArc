@@ -1,0 +1,87 @@
+{
+  "uid": "scorearc-espn-data-quality",
+  "title": "ESPN data quality",
+  "tags": [
+    "scorearc",
+    "scorearc-operations-suite",
+    "scorearc-operations-detail"
+  ],
+  "editable": false,
+  "timezone": "utc",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "scorearc-operations-suite"
+      ],
+      "asDropdown": false,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 20,
+      "type": "table",
+      "title": "ESPN feed changes",
+      "description": "Up to 100 distinct changes first seen or last recorded in the selected window. Inspection covers valid roster and biography JSON up to 2 MiB. Fragments are limited to 1 KiB. The example and competition come from the first sighting. Repeat sightings update at most once per UTC hour. Queue, quota and write warnings appear in the ingester logs. Biography requests use one competition namespace for players across all editions.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "scorearc-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "SELECT endpoint AS \"Endpoint\", path AS \"Field path\", kind AS \"Change\", detail AS \"Detail\",\n       first_competition AS \"First request competition\", example::text AS \"First example\",\n       first_seen_at AS \"First seen\", last_seen_at AS \"Last recorded\", observed_hours AS \"Observed hours\"\nFROM public.espn_feed_change\nWHERE $__timeFilter(first_seen_at) OR $__timeFilter(last_seen_at)\nORDER BY CASE WHEN $__timeFilter(last_seen_at) THEN last_seen_at ELSE first_seen_at END DESC, endpoint, path, kind, detail\nLIMIT 100"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "First example"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 21,
+      "type": "text",
+      "title": "Recorded replay coverage · CI",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 5
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "CI writes recorded ESPN responses into Postgres and reads them back through ScoreArc HTTP handlers.\n\n- [Team roster → squad response](https://github.com/mcasillas17/ScoreArc/blob/main/backend/reader/reader_contract_integration_test.go)\n- [Player biography → career response](https://github.com/mcasillas17/ScoreArc/blob/main/backend/reader/players_integration_test.go)\n\n[Check the backend job for the main commit](https://github.com/mcasillas17/ScoreArc/actions/workflows/ci.yml?query=branch%3Amain). Replay coverage is independent of live traffic and the dashboard time range."
+      }
+    }
+  ]
+}
