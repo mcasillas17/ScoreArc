@@ -43,6 +43,9 @@ const mappedTeam = (ids: Map<string, string>, team: Team): Team => ({ ...team, i
 export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
   const now = deps.now ?? Date.now;
   const identities = createReaderIdentity(deps.read, now);
+  function checkStatsObservation(observedAt?: string) {
+    if (observedAt && Date.parse(observedAt) > now()) throw new ReaderFailure('metadata');
+  }
   async function request<T>(path: string, query: Record<string, string> | undefined, decode: (raw: unknown) => T,
     scopes: Scopes, required: ReaderResourceName[], ttl = 0, policy?: ResourcePolicy) {
     deps.signal.throwIfAborted();
@@ -262,6 +265,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       if (body.team.id !== canonical || body.schedule.some(m => !m.scope || m.scope.competitionId !== rc.competition.id || m.scope.seasonId !== rc.season.id || (m.home.id !== canonical && m.away.id !== canonical))) throw new ReaderFailure('scope', false);
       const teams = await identities.teams(rc, [canonical]);
       const scheduleAvailable = supportsResource(rc.season, 'scores') && resourceUsable(evidence.resources.matches);
+      for (const player of body.squad) checkStatsObservation(player.statsObservedAt);
       const squadAvailable = supportsResource(rc.season, 'squad') && resourceUsable(evidence.resources.squad);
       if (scheduleAvailable) collectionEvidence(evidence, 'matches', body.schedule.length);
       if (squadAvailable) collectionEvidence(evidence, 'squad', body.squad.length);
@@ -276,6 +280,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       const { body, evidence, save } = await request(`${readerScopePath(rc)}/teams/${encodeURIComponent(canonical)}/squad`, undefined, decodeReaderSquad,
         { identity: 'team-season', squad: 'team-season', seasonStats: 'team-season' }, ['squad'], 15_000, { archiveRosters: rc.season.archiveRosters });
       collectionEvidence(evidence, 'squad', body.length); unique(body.map(row => row.id));
+      for (const player of body) checkStatsObservation(player.statsObservedAt);
       save();
       return body;
     },
@@ -289,6 +294,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       catch (error) { if (error instanceof ReaderFailure && error.status === 404) return null; throw error; }
       const { body, evidence } = loaded;
       if (body.id !== identity.canonicalId) throw new ReaderFailure('identity', false);
+      checkStatsObservation(body.totalsObservedAt);
       const stats = Object.fromEntries(body.totals.map(row => [row.name, row.value]));
       if (rc.season.archiveRosters) {
         if (evidence.resources.squad?.availability !== 'complete') throw new ReaderFailure('metadata');
@@ -297,7 +303,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
         if (rosterTeamId && team.id !== rosterTeamId) throw new ReaderFailure('scope');
         const profile = archiveRosterProfile(rc, team, { ...body, id: athleteId, stats });
         loaded.save();
-        return { ...profile, readerResources: evidence };
+        return { ...profile, readerResources: evidence, ...(body.totalsObservedAt && profile.totals.length > 0 && { totalsObservedAt: body.totalsObservedAt }) };
       }
       const gameLog = supportsResource(rc.season, 'participation') ? body.gameLog : [];
       const career = supportsResource(rc.season, 'career') ? body.career : [];
@@ -309,10 +315,10 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       ]);
       const team = body.team && mappedTeam(teams, body.team);
       if (rosterTeamId && team?.id !== rosterTeamId) throw new ReaderFailure('scope');
-      const { playerSlug, ...fields } = body;
+      const { playerSlug, totalsObservedAt, ...fields } = body;
       void playerSlug; // The public slug comes from the roster index.
-      const profile = { ...fields, totals: supportsResource(rc.season, 'squad')
-        ? profileTotals(stats, body.position) : [],
+      const totals = supportsResource(rc.season, 'squad') ? profileTotals(stats, body.position) : [];
+      const profile = { ...fields, totals, ...(totalsObservedAt && totals.length > 0 && { totalsObservedAt }),
         gameLogLabel: gameLog.length ? body.gameLogLabel : '', id: athleteId, readerResources: evidence, team,
         career: career.map(row => websiteCareer({ ...row, teamId: row.teamId === null ? null : careerTeams.get(row.teamId) ?? null })),
         gameLog: gameLog.map(row => {

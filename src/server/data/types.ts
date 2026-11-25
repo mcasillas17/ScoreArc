@@ -404,6 +404,8 @@ export interface SquadPlayer {
   nationality: string | null;
   headshotUrl: string | null;
   stats: PlayerSeasonStats | null;
+  /** Present when these stats were retained from an earlier verified roster for this team and edition. */
+  statsObservedAt?: string;
 }
 
 export interface TeamRecord {
@@ -485,6 +487,8 @@ export interface PlayerProfile {
   team: Team | null;
   seasonLabel: string; // e.g. "2026-27 Liga MX Stats"
   totals: PlayerSeasonTotal[];
+  /** Original observation of retained totals for this player's selected roster. */
+  totalsObservedAt?: string;
   gameLogLabel: string; // e.g. "Last 5 Matches"
   gameLog: GameLogRow[];
   career: CareerStint[];

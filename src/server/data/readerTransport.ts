@@ -79,7 +79,11 @@ export function createRequestBudget(options: {
         if (dependency) finish = startOutboundHttp(dependency, url, signal);
         const observeRedirects = Boolean(finish && healthContext().onHttp);
         try {
-          response = await abortable(fetcher(url, { signal, cache: 'no-store', redirect: observeRedirects ? 'manual' : 'error', headers: { Accept: 'application/json', 'User-Agent': 'scorearc' } }), signal);
+          const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': 'scorearc' };
+          if (dependency === 'reader' && /\/(?:teams\/[^/]+(?:\/squad)?|players\/[^/]+)$/.test(new URL(url).pathname)) {
+            headers['X-ScoreArc-Roster-Stats'] = 'retained-v1';
+          }
+          response = await abortable(fetcher(url, { signal, cache: 'no-store', redirect: observeRedirects ? 'manual' : 'error', headers }), signal);
         } catch (error) {
           signal.throwIfAborted();
           if (error instanceof ReaderFailure) throw error;

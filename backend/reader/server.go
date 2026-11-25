@@ -90,6 +90,22 @@ type App struct {
 	now      func() time.Time
 }
 
+const retainedStatsHeader = "X-ScoreArc-Roster-Stats"
+
+type retainedStatsKey struct{}
+
+// Older v1 clients reject additional JSON properties. Keep the original body
+// unless the caller explicitly requests the observation time for retained totals.
+func negotiateRosterStats(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Vary", retainedStatsHeader)
+		if r.Header.Get(retainedStatsHeader) == "retained-v1" {
+			r = r.WithContext(context.WithValue(r.Context(), retainedStatsKey{}, true))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (a *App) router() http.Handler {
 	router := chi.NewRouter()
 	router.Use(a.requestID)
@@ -114,9 +130,10 @@ func (a *App) router() http.Handler {
 		router.Get("/competitions/{comp}/{season}/top-scorers", a.handleTopScorers)
 		router.Get("/competitions/{comp}/{season}/leaders", a.handleLeaders)
 		router.Get("/competitions/{comp}/{season}/teams", a.handleEditionTeams)
-		router.Get("/competitions/{comp}/{season}/teams/{teamId}", a.handleTeam)
-		router.Get("/competitions/{comp}/{season}/teams/{teamId}/squad", a.handleSquad)
-		router.Get("/competitions/{comp}/{season}/players/{playerId}", a.handlePlayer)
+		profiles := router.With(negotiateRosterStats)
+		profiles.Get("/competitions/{comp}/{season}/teams/{teamId}", a.handleTeam)
+		profiles.Get("/competitions/{comp}/{season}/teams/{teamId}/squad", a.handleSquad)
+		profiles.Get("/competitions/{comp}/{season}/players/{playerId}", a.handlePlayer)
 		router.Get("/competitions/{comp}/news", a.handleNews)
 		router.Get("/matches/{id}", a.handleMatchSummary)
 		router.Get("/matches/{id}/box-score", a.handleBoxScore)
@@ -154,7 +171,7 @@ func corsHeaders(next http.Handler) http.Handler {
 		header.Set("Access-Control-Expose-Headers", exposedHeaders)
 		if request.Method == http.MethodOptions && request.Header.Get("Access-Control-Request-Method") != "" {
 			header.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-			header.Set("Access-Control-Allow-Headers", "Accept, Content-Type")
+			header.Set("Access-Control-Allow-Headers", "Accept, Content-Type, "+retainedStatsHeader)
 			header.Set("Access-Control-Max-Age", "300")
 			writer.WriteHeader(http.StatusOK)
 			return

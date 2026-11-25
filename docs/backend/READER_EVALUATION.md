@@ -103,7 +103,7 @@ Optional enrichment helpers can swallow failures or race an 800 ms timer; the
 runner uses the strict awaited index instead. No private selected-store marker
 or fallback registration is necessary.
 
-## Named normalization policy: `reader-evaluation-v4`
+## Named normalization policy: `reader-evaluation-v5`
 
 | Rule | Exact boundary |
 |---|---|
@@ -113,6 +113,7 @@ or fallback registration is necessary.
 | `group-set-order-v1` | Table collection order only; keeps distinct tables, all membership rows and their rank/order |
 | `nationality-empty-null-v1` | Only squad/player nationality empty string → null, matching the documented writer projection |
 | `resource-evidence-v1` | `readerResources` and group `readerDerivation` are evaluated as evidence, not equal to an absent ESPN envelope |
+| `retained-roster-current-view-v1` | For a squad member or player with a verified retained timestamp, compare the previous current-only projection (`stats: null` or `totals: []`) to ESPN. A current ESPN block still differs, including when its numbers happen to equal the older ones. On agreement the actual reader result can display the historical values with their date. All identities, unmarked rows and other fields still compare. |
 | `qualified-canonical-player-ref-v1` | Only leader/lineup `playerId` is a reader-qualified canonical reference; provider athlete ID and public `playerSlug` still compare |
 | `bracket-round-display-v1` | Reader-only round display name; slug/order/event membership still compare |
 | `mirrored-crest-v1` | For `crestUrl` and `teamCrestUrl`, resolve the ScoreArc mirror and ESPN's numeric club crest through the team crosswalk. Version 3 also recognizes three exact ESPN default PNG URLs verified byte-for-byte against the Necaxa, Atlas and Atlético de San Luis women's team mirrors. Version 4 includes exact national flag PNGs verified against the matching national-team mirrors. Unknown GUIDs, alternate files and another team's crest stay distinct. |

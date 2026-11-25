@@ -343,6 +343,7 @@ paths:
         failed schedule read as an empty schedule with scheduleAvailability
         unavailable; either makes the response no-store.
       parameters:
+        - { $ref: "#/components/parameters/RetainedRosterStats" }
         - { $ref: "#/components/parameters/Comp" }
         - { $ref: "#/components/parameters/Season" }
         - { $ref: "#/components/parameters/TeamID" }
@@ -350,6 +351,7 @@ paths:
         "200":
           description: Club identity, season record, squad statistics and matches
           headers:
+            Vary: { description: "Response representation varies with X-ScoreArc-Roster-Stats.", schema: { type: string } }
             X-ScoreArc-Resources: { $ref: "#/components/headers/Resources" }
             X-ScoreArc-Freshness: { $ref: "#/components/headers/Freshness" }
             X-ScoreArc-Observed-At: { $ref: "#/components/headers/ObservedAt" }
@@ -377,6 +379,7 @@ paths:
         require a roster observation verified for this club, competition and
         season before the reader serves retained players.
       parameters:
+        - { $ref: "#/components/parameters/RetainedRosterStats" }
         - { $ref: "#/components/parameters/Comp" }
         - { $ref: "#/components/parameters/Season" }
         - { $ref: "#/components/parameters/TeamID" }
@@ -387,6 +390,7 @@ paths:
             migration 0027 fall back to shirt number, then name, until the next
             roster refresh), with season statistics
           headers:
+            Vary: { description: "Response representation varies with X-ScoreArc-Roster-Stats.", schema: { type: string } }
             X-ScoreArc-Resources: { $ref: "#/components/headers/Resources" }
             Cache-Control: { $ref: "#/components/headers/SquadCacheControl" }
           content:
@@ -419,6 +423,7 @@ paths:
         failures return sanitized 500 with no-store. The existing ten-second
         request deadline and per-client rate limit apply. No provider requests.
       parameters:
+        - { $ref: "#/components/parameters/RetainedRosterStats" }
         - { $ref: "#/components/parameters/Comp" }
         - { $ref: "#/components/parameters/Season" }
         - { $ref: "#/components/parameters/PlayerID" }
@@ -426,6 +431,7 @@ paths:
         "200":
           description: Player identity with nullable metadata and bounded optional collections
           headers:
+            Vary: { description: "Response representation varies with X-ScoreArc-Roster-Stats.", schema: { type: string } }
             X-ScoreArc-Resources: { $ref: "#/components/headers/Resources" }
             Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
           content:
@@ -523,6 +529,12 @@ paths:
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
 components:
   parameters:
+    RetainedRosterStats:
+      in: header
+      name: X-ScoreArc-Roster-Stats
+      required: false
+      description: The value retained-v1 includes the original observation timestamp for retained totals verified for this membership. Other values use the default representation.
+      schema: { type: string }
     Comp:
       name: comp
       in: path
@@ -827,6 +839,10 @@ components:
           description: Whole years since the stored birth date, on the request's UTC date.
         nationality: { type: [string, "null"] }
         headshotUrl: { type: [string, "null"], description: "An https image URL on the providers CDN (espncdn.com); anything else is dropped at ingest." }
+        statsObservedAt:
+          type: string
+          format: date-time
+          description: Available with retained-v1 for a previously verified statistics block from this edition, team and source. Legacy rows may lack a timestamp.
         statsRetained:
           type: boolean
           const: true
@@ -930,6 +946,10 @@ components:
           maxItems: 15
           description: Up to 15 named stored season measurements by default; empty without a scoped aggregate row. Unknown values remain null and measured zero remains zero.
           items: { $ref: "#/components/schemas/PlayerSeasonTotal" }
+        totalsObservedAt:
+          type: string
+          format: date-time
+          description: Available with retained-v1 for retained totals verified for this membership, edition and source.
         totalsRetained: { type: boolean, enum: [true], description: "Present when the aggregate predates the latest selected membership or belongs to another team or source." }
         gameLogLabel: { type: string, enum: ["Last 5 Matches"] }
         gameLog:

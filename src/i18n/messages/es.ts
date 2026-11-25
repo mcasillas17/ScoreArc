@@ -119,6 +119,7 @@ export const es = {
   'squad.saves': 'Atajadas',
   'squad.goalsConcededAbbreviation': 'GR',
   'squad.goalsConceded': 'Goles recibidos',
+  'squad.statsLastVerified': (date: string) => `Estadísticas verificadas el ${date}`,
   'squad.hasNotAppeared': 'Sin aparición',
   'squad.unavailable': 'Plantel no disponible.',
   'news.title': 'Noticias',

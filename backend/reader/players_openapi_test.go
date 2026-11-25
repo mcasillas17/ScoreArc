@@ -20,12 +20,15 @@ func TestOpenAPIPlayerRoute(t *testing.T) {
 		t.Fatalf("operationId = %q", operation.OperationID)
 	}
 	parameters := append(path.Parameters, operation.Parameters...)
-	if len(parameters) != 3 {
-		t.Fatalf("expected only three path parameters, got %d", len(parameters))
+	if len(parameters) != 4 {
+		t.Fatalf("expected three path parameters and one optional header, got %d", len(parameters))
 	}
 	wantParameters := map[string]bool{"comp": true, "season": true, "playerId": true}
 	for _, reference := range parameters {
 		parameter := reference.Value
+		if parameter.In == "header" && parameter.Name == retainedStatsHeader && !parameter.Required {
+			continue
+		}
 		if parameter.In != "path" || !parameter.Required || !wantParameters[parameter.Name] {
 			t.Fatalf("unexpected player parameter: %+v", parameter)
 		}

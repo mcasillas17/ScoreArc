@@ -20,6 +20,21 @@ describe('reader transport', () => {
     expect((await client('/v1/competitions/mls/2026/standings')).body).toEqual([]);
     expect(calls[0][1]).toMatchObject({ redirect: 'error', cache: 'no-store' });
   });
+  it('requests retained timestamps only for reader squad, team and player responses', async () => {
+    const sent: (string | null)[] = [];
+    const signal = new AbortController().signal;
+    const budget = createRequestBudget({ signal, fetch: async (_url, init) => {
+      sent.push(new Headers(init?.headers).get('X-ScoreArc-Roster-Stats'));
+      return response([]);
+    } });
+    const read = createReaderTransport('https://reader.example', budget, signal);
+    const prefix = '/v1/competitions/mls/2026';
+    for (const path of ['teams/example', 'teams/example/squad', 'players/example', 'teams', 'matches']) {
+      await read(prefix + '/' + path);
+    }
+    await budget.json('https://example.test/teams/example', signal, 'espn');
+    expect(sent).toEqual(['retained-v1', 'retained-v1', 'retained-v1', null, null, null]);
+  });
   it('bounds a slow response body and distinguishes an aborted caller', async () => {
     const controller = new AbortController();
     const budget = createRequestBudget({ fetch: async () => new Response(new ReadableStream({ start() {} }), { headers: { 'X-ScoreArc-Resources': JSON.stringify(metadata) } }), signal: controller.signal });

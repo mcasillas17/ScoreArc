@@ -182,6 +182,13 @@ parity dataset. Start the reader-mode frontend in another terminal:
 SCOREARC_DATA_SOURCE=reader SCOREARC_READER_ORIGIN=http://127.0.0.1:4399 npm run dev -- --port 3431
 ```
 
+The standalone preview includes dated synthetic roster totals for Ali Avila.
+On `/en/c/world-cup/2026/team/nat-arg` and
+`/es/c/world-cup/2026/player/ali-avila`, his three goals carry the original
+June 29, 2026 verification time. Use local reader mode to see both routes.
+Production comparison retains its configured sampling rate and compares current
+observations under the [evaluation policy](READER_EVALUATION.md).
+
 Inspect `/en/c/leagues-cup/2026/standings` and its `/es/` counterpart: phase
 tables, W/D/L badges, canonical team links and badge popups. Inspect
 `/en/c/world-cup/2026/player/ali-avila` and the Spanish counterpart for nullable

@@ -40,7 +40,10 @@ func TestOpenAPIObjectSchemasAreExact(t *testing.T) {
 		sort.Strings(properties)
 		required := append([]string(nil), schema.Required...)
 		// These observations are optional for old responses and resources without the evidence.
-		if optional := map[string]string{"GameLogRow": "liveMatch", "BracketMatch": "shootout", "SquadPlayer": "statsRetained", "PlayerProfile": "totalsRetained"}[name]; optional != "" {
+		for _, optional := range map[string][]string{
+			"GameLogRow": {"liveMatch"}, "BracketMatch": {"shootout"},
+			"SquadPlayer": {"statsRetained", "statsObservedAt"}, "PlayerProfile": {"totalsRetained", "totalsObservedAt"},
+		}[name] {
 			if slices.Contains(required, optional) {
 				t.Errorf("%s.%s must remain optional", name, optional)
 			}

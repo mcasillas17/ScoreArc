@@ -860,13 +860,24 @@ and real Postgres reads prove accepted writes and least-privilege access.
   Supplied statistics must contain validated nested collections; an empty object
   is not an empty observation. Malformed or explicitly incomplete nested input
   preserves retained values and their observation time. Nullable measurements
-  remain valid inside a complete collection.
+  remain valid inside a complete collection. If a nonempty ESPN statistics
+  block omits a previously measured count for the same team and source,
+  ingestion keeps the player's entire last verified block and its original
+  observation time. The measurements share a single clock. A named null,
+  measured zero and an explicitly empty complete collection retain their
+  existing meanings. Unaffected members and valid membership updates proceed.
 - The public squad and embedded team roster keep the last measured season totals.
   A player has `statsRetained: true` when their totals come from a different
   club, source or roster write. The stored membership and totals share the same
-  transaction timestamp when supplied together. The website shows only totals
-  supplied with the latest roster. For example, the MLS playoff roster can omit
-  regular-season measurements for every player. After a played match finalizes,
+  transaction timestamp when supplied together. Team, squad and player reads
+  accept the request header `X-ScoreArc-Roster-Stats: retained-v1` and vary
+  their responses on that header. When an earlier same-team, same-source
+  aggregate has a verified clock in the selected edition, the reader can
+  include `statsObservedAt` alongside `statsRetained` on a squad member, or
+  `totalsObservedAt` alongside `totalsRetained` on a player profile. The
+  website opts in and labels these values with their last verification time
+  in UTC. A retained flag alone keeps the old current-only website projection.
+  The default v1 body stays compatible with earlier clients. After a played match finalizes,
   its two clubs become eligible for another roster read on a slow tick, subject
   to the existing per-club backoff and edition checks.
 - Career uses `player.bio_observed_at`, atomically written with history, including a

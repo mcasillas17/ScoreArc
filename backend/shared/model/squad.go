@@ -29,6 +29,10 @@ type SquadMember struct {
 }
 
 type PlayerSeasonStats struct {
+	// Canonical measurement columns missing from a nonempty provider block.
+	// A present null is an observation. An omitted prior count must keep its clock.
+	OmittedMeasurements []string `json:"-"`
+
 	Appearances    *int
 	SubIns         *int
 	Goals          *int

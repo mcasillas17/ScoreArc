@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -140,22 +141,25 @@ func rosterStats(raw json.RawMessage) (*model.PlayerSeasonStats, error) {
 	stats := &model.PlayerSeasonStats{}
 	// ESPN can add percentages and ratings. Only the measurements we store
 	// have the integer-count contract below.
-	fields := map[string]**int{
-		"appearances":    &stats.Appearances,
-		"subIns":         &stats.SubIns,
-		"totalGoals":     &stats.Goals,
-		"goalAssists":    &stats.Assists,
-		"totalShots":     &stats.Shots,
-		"shotsOnTarget":  &stats.ShotsOnTarget,
-		"offsides":       &stats.Offsides,
-		"foulsCommitted": &stats.FoulsCommitted,
-		"foulsSuffered":  &stats.FoulsSuffered,
-		"ownGoals":       &stats.OwnGoals,
-		"yellowCards":    &stats.YellowCards,
-		"redCards":       &stats.RedCards,
-		"saves":          &stats.Saves,
-		"goalsConceded":  &stats.GoalsConceded,
-		"shotsFaced":     &stats.ShotsFaced,
+	fields := map[string]struct {
+		column string
+		value  **int
+	}{
+		"appearances":    {"appearances", &stats.Appearances},
+		"subIns":         {"sub_ins", &stats.SubIns},
+		"totalGoals":     {"goals", &stats.Goals},
+		"goalAssists":    {"assists", &stats.Assists},
+		"totalShots":     {"shots", &stats.Shots},
+		"shotsOnTarget":  {"shots_on_target", &stats.ShotsOnTarget},
+		"offsides":       {"offsides", &stats.Offsides},
+		"foulsCommitted": {"fouls_committed", &stats.FoulsCommitted},
+		"foulsSuffered":  {"fouls_suffered", &stats.FoulsSuffered},
+		"ownGoals":       {"own_goals", &stats.OwnGoals},
+		"yellowCards":    {"yellow_cards", &stats.YellowCards},
+		"redCards":       {"red_cards", &stats.RedCards},
+		"saves":          {"saves", &stats.Saves},
+		"goalsConceded":  {"goals_conceded", &stats.GoalsConceded},
+		"shotsFaced":     {"shots_faced", &stats.ShotsFaced},
 	}
 	seen := make(map[string]bool)
 	hasUnmapped := false
@@ -190,13 +194,23 @@ func rosterStats(raw json.RawMessage) (*model.PlayerSeasonStats, error) {
 					return nil, fmt.Errorf("invalid measurement %s", stat.Name)
 				}
 				count := int(*value)
-				*destination = &count
+				*destination.value = &count
 			}
 		}
 	}
 	// An unrecognized measurement alone supplies no new facts about stored counts.
 	if hasUnmapped && len(seen) == 0 {
 		return nil, nil
+	}
+	// An explicitly empty collection can still clear the whole block. For a
+	// nonempty observation, distinguish missing names from named nulls.
+	if len(seen) > 0 {
+		for name, field := range fields {
+			if !seen[name] {
+				stats.OmittedMeasurements = append(stats.OmittedMeasurements, field.column)
+			}
+		}
+		slices.Sort(stats.OmittedMeasurements)
 	}
 	return stats, nil
 }

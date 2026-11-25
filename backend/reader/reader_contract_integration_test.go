@@ -1086,7 +1086,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			{"matches", detailedMatchesSQL, detailedMatchesArgs, []string{"team_external_ref", "player_external_ref", "match_event"}},
 			{"team schedule", teamScheduleStatement(true), []any{"nat-civ", "world-cup", "2026", maxTeamScheduleRows + 1}, []string{"team_external_ref", "player_external_ref", "match_event"}},
 			// Each member's provider id is one indexed lookup, never a scan.
-			{"team squad", teamSquadSQL, []any{"mex-america", "liga-mx", "2026-apertura", "2026-08-20", maxSquadRows + 1}, []string{"player_external_ref"}},
+			{"team squad", teamSquadSQL, []any{"mex-america", "liga-mx", "2026-apertura", "2026-08-20", maxSquadRows + 1, true}, []string{"player_external_ref"}},
 			{"summary", summarySQL, []any{uuid.Nil}, []string{"team_external_ref", "player_external_ref", "match_event", "match_detail"}},
 		} {
 			tx, err := pool.Begin(ctx)

@@ -5,6 +5,10 @@ import { I18nProvider, useTranslations } from '@/i18n/I18nProvider';
 import type { IndexedTeam } from '@/server/data/teamIndex';
 import type { NewsArticle, SquadPlayer, TeamProfile } from '@/server/data/types';
 import NewsList from './NewsList';
+import PlayerHeader from './PlayerHeader';
+import { getTranslator } from '@/i18n/translate';
+import { mapTeamRoster } from '@/server/data/providers/espn-team';
+import recordedRoster from '@/server/data/__fixtures__/espn-team-roster.json';
 import SquadTable from './SquadTable';
 import TeamHeader from './TeamHeader';
 import TeamSearch from './TeamSearch';
@@ -92,6 +96,23 @@ describe('Spanish team and news surfaces', () => {
   });
 
   afterEach(() => vi.useRealTimers());
+
+  it.each(['en', 'es'] as const)('dates retained season stats on the squad row and the player header in %s', locale => {
+    const at = '2026-08-09T12:37:13.123456Z';
+    const measured = mapTeamRoster(recordedRoster).find(player => player.stats !== null)!;
+    const retained = { ...measured, stats: { ...measured.stats!, totalGoals: 2 }, statsObservedAt: at };
+    const player = { ...retained, jersey: null, flagUrl: null, team: null, seasonLabel: '2026', totalsObservedAt: at,
+      totals: [{ name: 'totalGoals', label: 'Goals', value: 2, display: '2' }], gameLogLabel: '', gameLog: [], career: [] };
+    const html = renderToStaticMarkup(<I18nProvider locale={locale}>
+      <SquadTable squad={[retained, { ...measured, id: 'second' }]} />
+      <PlayerHeader player={player} t={getTranslator(locale)} />
+    </I18nProvider>);
+    expect(html.match(/<time .*?<\/time>/g)).toHaveLength(2);
+    expect(html.match(/dateTime="2026-08-09T12:37:13.123456Z"/g)).toHaveLength(2);
+    expect(html).toContain(locale === 'en' ? 'Stats last verified' : 'Estadísticas verificadas');
+    expect(html).toContain('UTC');
+    expect(html).toContain('<strong>2</strong>');
+  });
 
   it('localizes framing while preserving provider-authored names and copy', () => {
     const html = renderSpanish(
