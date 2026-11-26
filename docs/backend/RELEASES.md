@@ -46,7 +46,9 @@ for timestamps, bounded live evidence and the still-open governance/acceptance.
 
 ## Release contract
 
-`CI` validates PRs, branch pushes, main pushes and manual dispatches. The stable
+`CI` runs on pull requests, pushes to `main` and manual dispatches. Pushing
+another commit to an open PR cancels its older CI run. For a branch without
+an open PR, use a manual dispatch to run the suite on demand. The stable
 `test` job is the single gate over two jobs that run in parallel: `frontend`
 (registry exports, frontend tests/typecheck/lint/build) and `backend` (database
 migration apply/rollback, backend race tests and vet). `test` runs with
@@ -592,8 +594,8 @@ cannot know whether a migration it does not carry is additive, and "any newer
 version is safe" fails the first time a migration contracts a column. The gate
 therefore fixes the order: **apply migration N, merge, then the normal release.**
 
-1. The PR that adds migration N gets CI's `migration-notice` warning: "Schema
-   head `NNNN_name`: apply this migration to production before merging".
+1. The backend CI job warns on a PR that adds migration N. Its job summary names
+   the new schema head and asks for the production migration before merge.
    Review it as usual; do not merge yet.
 2. Read-only verify the target (database, schema, a single clean ledger row at
    the currently released head, role grants). A different, missing, dirty or

@@ -3,6 +3,7 @@ name: CI
 on:
   pull_request:
   push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       release:
@@ -10,6 +11,12 @@ on:
         type: choice
         default: changed
         options: [changed, reader, ingester, frontend, all]
+
+# Share a group across updates to one PR. Give each main push and manual run
+# its own group so a newer run cannot interrupt a release or displace a queued run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -55,6 +62,31 @@ jobs:
       DIRECT_DSN: postgres://postgres:postgres@localhost:5432/scorearc?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+          persist-credentials: false
+      - name: Warn when this PR raises the schema head
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          # The checkout is the PR merge commit; HEAD^1 is the base it merges into.
+          added=$(git diff --name-only --no-renames --diff-filter=A HEAD^1 HEAD -- 'backend/migrations/*.up.sql')
+          [ -n "$added" ] || exit 0
+          head=$(cd backend/migrations && ls -- *.up.sql | sort -n | tail -n 1)
+          head=${head%.up.sql}
+          {
+            echo "### Schema head \`$head\`: apply this migration to production before merging"
+            echo
+            printf '%s\n' "$added" | sed 's/.*/- `&`/'
+            echo
+            echo "Apply it with authorization and read it back as each service login, then merge: the release's"
+            echo "\`-check-schema\` release_command refuses an older production schema without changing any service machine."
+            echo "See docs/backend/RELEASES.md#release-time-schema-gate."
+          } >> "$GITHUB_STEP_SUMMARY"
+          # git quotes paths with newlines, so each name stays on its own command line.
+          printf '%s\n' "$added" | while IFS= read -r file; do
+            echo "::warning file=$file,line=1,title=Schema migration::New schema head $head: apply this migration to production before merging."
+          done
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: backend/go.mod
@@ -93,38 +125,6 @@ jobs:
         run: |
           echo "frontend=$FRONTEND backend=$BACKEND"
           [ "$FRONTEND" = success ] && [ "$BACKEND" = success ]
-
-  # PR-time signal: both Fly services require exactly the highest migration, and
-  # their release_command refuses an older production schema, so merging before
-  # the production apply produces a refused (inactive) release, not a deploy.
-  migration-notice:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 2
-          persist-credentials: false
-      - name: Warn when this PR raises the schema head
-        run: |
-          # The checkout is the PR merge commit; HEAD^1 is the base it merges into.
-          added=$(git diff --name-only --no-renames --diff-filter=A HEAD^1 HEAD -- 'backend/migrations/*.up.sql')
-          [ -n "$added" ] || exit 0
-          head=$(cd backend/migrations && ls -- *.up.sql | sort -n | tail -n 1)
-          head=${head%.up.sql}
-          {
-            echo "### Schema head \`$head\`: apply this migration to production before merging"
-            echo
-            printf '%s\n' "$added" | sed 's/.*/- `&`/'
-            echo
-            echo "Apply it with authorization and read it back as each service login, then merge: the release's"
-            echo "\`-check-schema\` release_command refuses an older production schema without changing any service machine."
-            echo "See docs/backend/RELEASES.md#release-time-schema-gate."
-          } >> "$GITHUB_STEP_SUMMARY"
-          # git quotes paths with newlines, so each name stays on its own command line.
-          printf '%s\n' "$added" | while IFS= read -r file; do
-            echo "::warning file=$file,line=1,title=Schema migration::New schema head $head: apply this migration to production before merging."
-          done
 
   production:
     needs: test
