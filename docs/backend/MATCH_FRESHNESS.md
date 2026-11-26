@@ -1016,6 +1016,40 @@ email follows once a cron tick runs more than 60 minutes after the last heartbea
 lands first; any such email is followed by the recovery email. Acceptance is the heartbeat row
 advancing every few minutes.
 
+### Side-by-side Cloudflare trial
+
+The candidate in `infra/match-freshness-shadow` has its own five-minute schedule and D1 database. It reads the same season summary endpoint and applies the same incident policy as the Actions job. It records each edition's open state, OPEN/RESOLVED transition and cause. GitHub continues to send every live alert and heartbeat. The shadow has only the reader and `SHADOW_DB`, with no public HTTP handler, notification credentials or receiver binding. Merging the PR delivers the code. An operator starts the hosted trial separately.
+
+**Local smoke test.** From `infra/match-freshness-shadow`, use Wrangler 4.123.0 (the receiver's version). Apply the migration and start the local Workers runtime:
+
+```sh
+wrangler d1 migrations apply scorearc-match-freshness-shadow --local
+wrangler dev --local --test-scheduled --port 8794
+```
+
+In a second terminal, run `curl --fail 'http://127.0.0.1:8794/__scheduled?cron=*/5+*+*+*+*'`. This makes real GETs to the reader and writes local SQLite. Run it again in the next five-minute slot for a comparable pair. Inspect local rows with `wrangler d1 execute scorearc-match-freshness-shadow --local --command 'SELECT tick,previous_tick,requests,finished_ms-started_ms AS wall_ms FROM shadow_tick ORDER BY tick DESC LIMIT 3'`. The first row has no prior state. Overlapping executions record a conflict or skip a completed tick. Only whole observations commit. Inserts retain the last two days of samples.
+
+**Hosted trial.** From the same directory, create the dedicated `scorearc-match-freshness-shadow` database with `wrangler d1 create scorearc-match-freshness-shadow`. Set the returned `database_id` on the existing `SHADOW_DB` binding in this Worker's config and verify the database name and ID. Run `wrangler d1 migrations apply scorearc-match-freshness-shadow --remote`, then `wrangler deploy` from the reviewed checkout. Inspect the first committed rows before selecting a live match window. To stop the trial, remove only this Worker's cron trigger and redeploy it; leave its D1 rows available for comparison. The receiver's cron keeps dispatching GitHub.
+
+**Compare one observation.** Use the pending artifact from a completed, trusted first-attempt watchdog run on main. It contains the transitions recorded before notification delivery. From the repo root, substitute its numeric run ID below. Set `storage=--local` for the smoke test or `storage=--remote` for the approved hosted trial.
+
+```sh
+run_id=REPLACE_WITH_RUN_ID
+storage=--local
+trial_dir=$(mktemp -d)
+gh run download "$run_id" --repo mcasillas17/ScoreArc --name match-freshness-pending --dir "$trial_dir"
+tick=$(node -p 'Math.floor(Date.parse(require(process.argv[1]).updatedAt)/300000)*300000' "$trial_dir/state.json")
+wrangler d1 execute scorearc-match-freshness-shadow "$storage" --config infra/match-freshness-shadow/wrangler.jsonc \
+  --command "SELECT * FROM shadow_tick WHERE tick=$tick" --json > "$trial_dir/shadow.json"
+node scripts/compare-match-freshness.mjs "$trial_dir/state.json" "$trial_dir/shadow.json"
+```
+
+Exit 0 means every scope agreed on open state, transition and cause. Exit 1 lists the differing scopes. Exit 2 means the evidence cannot be paired, including cold start, a missing previous slot, a scope mismatch or observations ending over a minute apart. Both readers sample independently. Inspect reader poll times and shadow startup history before attributing a difference to the runtime. An incident already open when the trial starts can produce a different first transition. A skipped GitHub observation or a Worker overlap leaves a gap in the trial evidence.
+
+**Measure the live window.** Record the start/end in UTC, GitHub run IDs, matched/different/inconclusive counts, uncovered slots, and investigate each differing scope. Include active match play and incident opening/recovery when evidence exists; the replay test exercises both transitions deterministically. In Cloudflare Workers Metrics record invocation count, CPU time (p50/p99), wall time and errors, including exceeded limits. Use D1 Analytics for rows read/written and storage. The Worker's `requests` counts attempted reader GETs, and `wallMs` includes network waits. An ordinary tick currently adds 15 reader GETs, or 4,320 per day, while both monitors run. Compare measured usage with the actual Cloudflare plan before considering cutover. [Workers metrics](https://developers.cloudflare.com/workers/observability/metrics-and-analytics/) · [D1 metrics](https://developers.cloudflare.com/d1/observability/metrics-analytics/)
+
+**First local comparison.** On November 25 at 11:30 p.m. Pacific (07:30 UTC November 26), local workerd queried the production reader for 15 editions in 9.626 seconds of wall time. The comparator agreed with [GitHub run 45775775329](https://github.com/mcasillas17/ScoreArc/actions/runs/45775775329) on all 15 decisions. Every edition was quiet in this sample. Hosted CPU, live-play incident transitions and recurring usage still need a deployed trial.
+
 ## Schema and separately approved release order
 
 **Existing production:** migration 0023 and the recovery releases were completed

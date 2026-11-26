@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { load } from 'js-yaml';
 import { CONTRACT_KEYS, checkScope, currentScopes, runWatchdog } from './match-freshness-watchdog.mjs';
+import { boundedJSON } from './match-freshness-reader.mjs';
 
 const scope = { competition: 'world-cup', season: '2026' };
 const validHeaders = {
@@ -49,6 +50,17 @@ async function stateFile() {
 }
 
 describe('bounded match freshness watchdog', () => {
+  it('decodes bounded UTF-8 across chunk boundaries in either runtime', async () => {
+    const bytes = new TextEncoder().encode('"México"');
+    const response = () => new Response(new ReadableStream({
+      start(controller) {
+        for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
+        controller.close();
+      },
+    }), { headers: { 'Content-Type': 'application/json' } });
+    await expect(boundedJSON(response(), bytes.length)).resolves.toBe('México');
+    await expect(boundedJSON(response(), bytes.length - 1)).rejects.toThrow('response-size');
+  });
   it('reads independent poll evidence and distinguishes non-live from urgent stale data', async () => {
     const evidence = { full: { at: '2026-09-19T07:00:00.123456+00:00', outcome: 'failed', missing: 1 } };
     const headers = { ...validHeaders, 'X-ScoreArc-Poll-Evidence': JSON.stringify(evidence),
