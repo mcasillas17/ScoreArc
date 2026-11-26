@@ -54,8 +54,10 @@ async function observeTick(scheduledTime, db) {
   return { status: committed ? 'observed' : 'overlap', tick, requests: scopes.length, wallMs: finished - started };
 }
 
-export default {
+const worker = {
   async scheduled(controller, env) {
     console.log(await observeTick(controller.scheduledTime, env.SHADOW_DB));
   },
 };
+
+export default worker;

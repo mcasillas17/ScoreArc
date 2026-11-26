@@ -66,6 +66,12 @@ it('compares successive five-minute observations without sending events or heart
   expect(JSON.parse(String(rows[1].editions))[key]).toMatchObject({ open: false, transition: 'RESOLVED' });
   expect(good).toHaveBeenCalledTimes(scopes.length);
   expect(rows[1].previous_tick).toBe(first);
+  await worker.scheduled({ scheduledTime: first }, { SHADOW_DB: binding });
+  expect(good).toHaveBeenCalledTimes(scopes.length);
+  const afterPause = first + 3 * 86_400_000;
+  vi.spyOn(Date, 'now').mockReturnValue(afterPause);
+  await worker.scheduled({ scheduledTime: afterPause }, { SHADOW_DB: binding });
+  expect(sql.prepare('SELECT tick, previous_tick FROM shadow_tick').all()).toEqual([{ tick: afterPause, previous_tick: first + interval }]);
 });
 
 it('only commits one result when observations overlap, and rejects corrupt history', async () => {
