@@ -1018,7 +1018,7 @@ advancing every few minutes.
 
 ### Side-by-side Cloudflare trial
 
-The candidate in `infra/match-freshness-shadow` has its own five-minute schedule and D1 database. It reads the same season summary endpoint and applies the same incident policy as the Actions job. It records each edition's open state, OPEN/RESOLVED transition and cause. GitHub continues to send every live alert and heartbeat. The shadow has only the reader and `SHADOW_DB`, with no public HTTP handler, notification credentials or receiver binding. Merging the PR delivers the code. An operator starts the hosted trial separately.
+The Worker in `infra/match-freshness-shadow` runs every five minutes and writes to its own D1 database. It reads the same season summary endpoint and applies the same incident policy as the Actions job. It records each edition's open state, OPEN/RESOLVED transition and cause. GitHub continues to send every live alert and heartbeat. The shadow has only the reader and `SHADOW_DB`, with no public HTTP handler, notification credentials or receiver binding.
 
 **Local smoke test.** From `infra/match-freshness-shadow`, use Wrangler 4.123.0 (the receiver's version). Apply the migration and start the local Workers runtime:
 
@@ -1029,7 +1029,7 @@ wrangler dev --local --test-scheduled --port 8794
 
 In a second terminal, run `curl --fail 'http://127.0.0.1:8794/__scheduled?cron=*/5+*+*+*+*'`. This makes real GETs to the reader and writes local SQLite. Run it again in the next five-minute slot for a comparable pair. Inspect local rows with `wrangler d1 execute scorearc-match-freshness-shadow --local --command 'SELECT tick,previous_tick,requests,finished_ms-started_ms AS wall_ms FROM shadow_tick ORDER BY tick DESC LIMIT 3'`. The first row has no prior state. Overlapping executions record a conflict or skip a completed tick. Only whole observations commit. Inserts retain the last two days of samples.
 
-**Hosted trial.** From the same directory, create the dedicated `scorearc-match-freshness-shadow` database with `wrangler d1 create scorearc-match-freshness-shadow`. Set the returned `database_id` on the existing `SHADOW_DB` binding in this Worker's config and verify the database name and ID. Run `wrangler d1 migrations apply scorearc-match-freshness-shadow --remote`, then `wrangler deploy` from the reviewed checkout. Inspect the first committed rows before selecting a live match window. To stop the trial, remove only this Worker's cron trigger and redeploy it; leave its D1 rows available for comparison. The receiver's cron keeps dispatching GitHub.
+**Hosted trial.** The trial started on November 26, 2026. To redeploy, run `wrangler d1 info scorearc-match-freshness-shadow --json` from the same directory and compare its UUID with the `SHADOW_DB` binding in `wrangler.jsonc`. Apply pending migrations with `wrangler d1 migrations apply scorearc-match-freshness-shadow --remote`, then run `wrangler deploy` from the reviewed checkout. To pause the trial, set this Worker's `triggers.crons` to `[]` and redeploy it. The saved D1 rows remain available for comparison, and the receiver continues dispatching GitHub.
 
 **Compare one observation.** Use the pending artifact from a completed, trusted first-attempt watchdog run on main. It contains the transitions recorded before notification delivery. From the repo root, substitute its numeric run ID below. Set `storage=--local` for the smoke test or `storage=--remote` for the approved hosted trial.
 
@@ -1048,7 +1048,16 @@ Exit 0 means every scope agreed on open state, transition and cause. Exit 1 list
 
 **Measure the live window.** Record the start/end in UTC, GitHub run IDs, matched/different/inconclusive counts, uncovered slots, and investigate each differing scope. Include active match play and incident opening/recovery when evidence exists; the replay test exercises both transitions deterministically. In Cloudflare Workers Metrics record invocation count, CPU time (p50/p99), wall time and errors, including exceeded limits. Use D1 Analytics for rows read/written and storage. The Worker's `requests` counts attempted reader GETs, and `wallMs` includes network waits. An ordinary tick currently adds 15 reader GETs, or 4,320 per day, while both monitors run. Compare measured usage with the actual Cloudflare plan before considering cutover. [Workers metrics](https://developers.cloudflare.com/workers/observability/metrics-and-analytics/) · [D1 metrics](https://developers.cloudflare.com/d1/observability/metrics-analytics/)
 
-**First local comparison.** On November 25 at 11:30 p.m. Pacific (07:30 UTC November 26), local workerd queried the production reader for 15 editions in 9.626 seconds of wall time. The comparator agreed with [GitHub run 45775775329](https://github.com/mcasillas17/ScoreArc/actions/runs/45775775329) on all 15 decisions. Every edition was quiet in this sample. Hosted CPU, live-play incident transitions and recurring usage still need a deployed trial.
+**First local comparison.** On November 25 at 11:30 p.m. Pacific (07:30 UTC November 26), local workerd queried the production reader for 15 editions in 9.626 seconds of wall time. The comparator agreed with [GitHub run 45775775329](https://github.com/mcasillas17/ScoreArc/actions/runs/45775775329) on all 15 decisions. Every edition was quiet in this sample.
+
+**First hosted comparison.** Cloudflare deployed Worker version `d2b732ee-bbdc-4b6b-855c-7aa6c6d4d060` at 08:24 UTC on November 26, 2026. Its first two scheduled observations each checked all 15 editions. Cloudflare recorded 30 subrequests and zero invocation errors. The timings below are for the full invocation.
+
+| UTC slot | GitHub run | Comparison | Worker CPU | Worker wall time |
+| --- | --- | --- | ---: | ---: |
+| 08:35 | [45784403237](https://github.com/mcasillas17/ScoreArc/actions/runs/45784403237) | Baseline for the next observation | 219 ms | 1.354 s |
+| 08:40 | [45785105363](https://github.com/mcasillas17/ScoreArc/actions/runs/45785105363) | All 15 agreed on open state, transition and cause | 334 ms | 4.177 s |
+
+The 08:40 observations finished 25 seconds apart. Every edition was quiet. Comparison during live match play and evidence of an incident opening and resolving remain outstanding before cutover.
 
 ## Schema and separately approved release order
 
