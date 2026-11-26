@@ -11,10 +11,12 @@ printf '%s' "${SHIPPER_CREDENTIALS:?}" | base64 -d > /etc/vector-shipper.json
 chown 472:472 /run/secrets/{vercel,fly}_token /etc/vector-shipper.json
 unset VERCEL_DRAIN_TOKEN FLY_SHIPPER_TOKEN SHIPPER_CREDENTIALS
 children=()
+watchdog_pid=
 # Invoked by the EXIT trap for signals and daemon failures.
 # shellcheck disable=SC2329
 stop() {
   trap - TERM INT
+  if [[ -n "$watchdog_pid" ]]; then kill -TERM "$watchdog_pid" 2>/dev/null || true; fi
   if (( ${#children[@]} )); then
     kill -TERM "${children[@]}" 2>/dev/null || true
     wait || true
@@ -22,6 +24,14 @@ stop() {
 }
 trap stop EXIT
 trap 'exit 0' TERM INT
+if [[ -n "${FLY_MONITOR_TOKEN:-}" ]]; then
+  # A separate UID and an empty environment keep Grafana, Neon and shipper
+  # credentials out of the watchdog. The token travels through fd 3.
+  env -i PATH="$PATH" LD_LIBRARY_PATH=/opt/scorearc/node/lib su-exec 65532:65532 \
+    sh /opt/scorearc/supervise-watchdog.sh 3<<< "$FLY_MONITOR_TOKEN" &
+  watchdog_pid=$!
+fi
+unset FLY_MONITOR_TOKEN
 if [[ -n "${TUNNEL_TOKEN:-}" ]]; then
   export GF_AUTH_PROXY_ENABLED=true GF_AUTH_PROXY_HEADER_NAME=Cf-Access-Authenticated-User-Email
   export GF_AUTH_PROXY_HEADER_PROPERTY=email GF_AUTH_PROXY_AUTO_SIGN_UP=true GF_AUTH_PROXY_WHITELIST=127.0.0.1

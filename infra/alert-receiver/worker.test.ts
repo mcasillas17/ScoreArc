@@ -245,6 +245,45 @@ describe('alert receiver protocol', () => {
   });
 });
 
+describe('scheduled producer handoff', () => {
+  it.each([
+    "checkpoint='{}'", 'last_tick=300000', 'lease_until=1200000',
+  ])('refuses to dispatch from an inconsistent GitHub ownership row (%s)', async assignment => {
+    const { db, env } = await setup();
+    db.sqlite.exec(`UPDATE monitor_runtime SET ${assignment}`);
+    const dispatch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(worker.scheduled({ scheduledTime: Date.now() }, env)).rejects.toThrow();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps checking for missed heartbeats while dispatches are drained', async () => {
+    const { db, env, send } = await setup();
+    db.sqlite.exec("UPDATE monitor_runtime SET mode='draining'");
+    db.sqlite.exec("INSERT INTO monitor_heartbeat(id,last_at) VALUES(1,'2026-11-01T00:00:00Z')");
+    const dispatch = vi.spyOn(globalThis, 'fetch');
+    await worker.scheduled({ scheduledTime: Date.now() }, env);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(send.mock.calls.map(([m]) => m.subject)).toEqual(['[ScoreArc] Monitor not running']);
+    expect((await worker.fetch(post(event()), env, ctx)).status).toBe(200);
+  });
+
+  it('only checks the independent missed-heartbeat alarm when Fly owns the monitor', async () => {
+    const { db, env, send } = await setup();
+    db.sqlite.exec(`UPDATE monitor_runtime SET mode='fly', checkpoint='{}';
+      INSERT INTO monitor_heartbeat(id,last_at) VALUES(1,'2026-11-01T00:00:00Z')`);
+    const outgoing = vi.spyOn(globalThis, 'fetch');
+    await worker.scheduled({ scheduledTime: Date.now() }, env);
+    expect(outgoing).not.toHaveBeenCalled();
+    expect(send.mock.calls.map(([m]) => m.subject)).toEqual(['[ScoreArc] Monitor not running']);
+    for (const mode of ['fly','draining']) {
+      db.sqlite.prepare('UPDATE monitor_runtime SET mode=?').run(mode);
+      expect((await worker.fetch(post(event()), env, ctx)).status).toBe(409);
+      expect((await worker.fetch(new Request(`http://localhost/heartbeat/${TOKEN}`, { method: 'POST' }), env, ctx)).status).toBe(409);
+    }
+  });
+});
+
 // The real sender state machine against the real receiver: no acknowledgment shortcut.
 describe('real monitor sender against the receiver', () => {
   const scopes = [{ competition: 'liga-mx', season: '2026-apertura' }];
@@ -365,7 +404,7 @@ describe('real monitor sender against the receiver', () => {
 describe('monitor heartbeat', () => {
   const HEARTBEAT = `http://127.0.0.1/heartbeat/${TOKEN}`;
   const beat = (env: Env, url = HEARTBEAT) => worker.fetch(new Request(url, { method: 'POST' }), env, ctx);
-  const check = (env: Env) => worker.scheduled({}, env);
+  const check = (env: Env) => worker.scheduled({ scheduledTime: Date.now() }, env);
   const row = (db: Awaited<ReturnType<typeof database>>) => db.sqlite.prepare('SELECT last_at, alerted_at FROM monitor_heartbeat').all();
   const at = (iso: string) => vi.useFakeTimers({ now: Date.parse(iso), toFake: ['Date'] });
   // The cron also dispatches the workflow; no test reaches GitHub.
@@ -488,7 +527,7 @@ describe('monitor heartbeat', () => {
     const { db, send, env } = await setup();
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     at('2026-11-01T12:00:00Z'); await beat(env);
-    db.failing.statement = 'SELECT';
+    db.failing.statement = 'SELECT last_at';
     at('2026-11-01T14:00:00Z'); await check(env);
     expect(send).not.toHaveBeenCalled();
     expect(github).toHaveBeenCalledOnce(); // the dispatch is independent of the check
