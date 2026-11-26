@@ -46,7 +46,23 @@ For local verification, use a local root URL or omit it and run `docker compose 
 
 ### Deploy the dedicated Fly Machine
 
-From `infra/grafana`, create app `scorearc-observability` in the same Fly organization and private network as the two Go services. Create a 10 GB encrypted `operations_data` volume in `iad`. Supply the credentials above with `fly secrets import --stage` through private stdin, including the encoded `SHIPPER_CREDENTIALS` described below. Run `fly deploy --ha=false --no-public-ips` using this directory as build context. The Docker build context contains only the dashboard, provisioning files and service configuration. Before the tunnel is active, use Fly SSH on the Machine to check `http://127.0.0.1:3000/api/health` and `http://127.0.0.1:3100/ready`. The Fly Machine defines no public service.
+From `infra/grafana`, create app `scorearc-observability` in the same Fly organization and private network as the two Go services. Create a 10 GB encrypted `operations_data` volume in `iad`. Supply the credentials above with `fly secrets import --stage` through private stdin, including the encoded `SHIPPER_CREDENTIALS` described below. Build and release the image using the instructions below. Before the tunnel is active, use Fly SSH on the Machine to check `http://127.0.0.1:3000/api/health` and `http://127.0.0.1:3100/ready`. The Fly Machine defines no public service.
+
+### Fly monitoring image
+
+Build on a local Docker daemon with Buildx. Run from the repository root on the commit to release. The helper archives only the committed dashboard configuration and watchdog sources. It targets the existing amd64 Machine. For a watchdog-only rollout, the optional second argument is the verified digest of the currently deployed **operations** image whose Grafana, Loki, Vector and Tunnel layers you want to preserve. Omit it to rebuild the full stack, including dashboard or service configuration changes.
+
+```sh
+app=scorearc-observability
+image=registry.fly.io/$app:monitor-$(git rev-parse --short=12 HEAD)
+flyctl auth docker
+infra/grafana/build-image.sh "$image"
+docker run --rm --platform linux/amd64 --user 65532:65532 --env LD_LIBRARY_PATH=/opt/scorearc/node/lib --entrypoint /opt/scorearc/node/bin/node "$image" --max-old-space-size=192 /opt/scorearc/scripts/fly-match-freshness.mjs observe
+docker push "$image"
+flyctl deploy --config infra/grafana/fly.toml --app "$app" --image "$image" --ha=false --strategy immediate
+```
+
+The single mounted Machine restarts during deployment. Verify its original ID, attached volume and size, then check Grafana and Loki readiness over Fly SSH. The watchdog starts only when `FLY_MONITOR_TOKEN` is present. It runs at low priority under UID 65532 with a private environment and a restart loop independent of Grafana. State and delivery receipts live in the receiver's D1 database. Rebuild the image for edits to the monitored registry, match freshness reader or policy. The [handoff runbook](../../docs/backend/MATCH_FRESHNESS.md#fly-monitor-and-handoff) covers tokens, producer selection, checkpoints and rollback.
 
 ## Cloudflare Access
 

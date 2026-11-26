@@ -2,8 +2,12 @@
 // owner. Contract: docs/backend/MATCH_FRESHNESS.md#alert-receiver. HTTP 200 with
 // {"eventId"} means saved and emailed; anything else makes the sender retry the same id.
 // It also takes monitor-run heartbeats and, on a cron, emails when they stop
-// (docs/backend/MATCH_FRESHNESS.md#not-running-check). The same cron starts the
-// monitor workflow, because GitHub's own schedule starts it late or not at all.
+// (docs/backend/MATCH_FRESHNESS.md#not-running-check). D1 selects which producer
+// owns the five-minute check while the receiver keeps the same email receipts.
+import { FLY_RUN_URL } from '../../scripts/match-freshness-fly.mjs';
+import { eventPayload, isEvent, type Event } from './event-payload';
+import { claim, exportCheckpoint, getMonitorMode, githubOwner, heartbeatGuard, MAX_CHECKPOINT,
+  release, reservedEvent, saveCheckpoint, validTick } from './fly-runtime';
 
 interface Statement {
   first<T>(): Promise<T | null>;
@@ -14,10 +18,12 @@ export interface Env {
   EMAIL: { send(message: { to: string; from: string; subject: string; text: string; html: string }): Promise<unknown> };
   RECEIVER_TOKEN: string;
   ALERT_RECIPIENT: string;
+  FLY_MONITOR_TOKEN?: string;
   // Fine-grained token for this repository only, Actions read and write.
   GITHUB_DISPATCH_TOKEN?: string;
 }
 
+const WORKER_RUN_URL = 'https://dash.cloudflare.com/4fcb63110aa75522b2636c923eeff468/workers/services/view/scorearc-alert-receiver/production/observability/logs';
 const ALERT_SENDER = 'alerts@scorearc.futbol';
 const MAX_BODY_BYTES = 4096;
 const MIN_TOKEN_LENGTH = 32;
@@ -31,30 +37,7 @@ const WORKFLOW_URL = 'https://github.com/mcasillas17/ScoreArc/actions/workflows/
 const DISPATCH_URL = 'https://api.github.com/repos/mcasillas17/ScoreArc/actions/workflows/match-freshness.yml/dispatches';
 const DISPATCH_TIMEOUT_MS = 10_000;
 
-const eventId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:[1-9][0-9]{0,15}$/;
-const slug = /^[a-z0-9][a-z0-9-]{0,79}$/;
-const instant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
-const runUrl = /^https:\/\/github\.com\/mcasillas17\/ScoreArc\/actions\/runs\/[1-9][0-9]{0,19}$/;
-const errorCategory = /^(http-\d{3}|content-type|response-size|body|json|body-contract|counts-contract|headers-contract|request|timeout)$/;
-const KEYS = 'competition count error eventId freshness incidentId occurredAt overdue poll runUrl season stale status';
-
-type Event = Record<'eventId' | 'incidentId' | 'competition' | 'season' | 'status' | 'occurredAt' | 'runUrl', string> &
-  Record<'count' | 'stale' | 'overdue', number | null> & { freshness: string | null; poll: string | null; error: string | null };
-
 const matches = (pattern: RegExp, value: unknown) => typeof value === 'string' && pattern.test(value);
-const countOrNull = (value: unknown) => value === null || (Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= 5000);
-const oneOfOrNull = (value: unknown, allowed: string[]) => value === null || (typeof value === 'string' && allowed.includes(value));
-
-// Everything that reaches the email is matched here, so it cannot carry headers or markup.
-function isEvent(value: unknown): value is Event {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const e = value as Record<string, unknown>;
-  return Object.keys(e).sort().join(' ') === KEYS && matches(eventId, e.eventId) && matches(eventId, e.incidentId) &&
-    matches(slug, e.competition) && matches(slug, e.season) && (e.status === 'OPEN' || e.status === 'RESOLVED') &&
-    matches(instant, e.occurredAt) && matches(runUrl, e.runUrl) && countOrNull(e.count) && countOrNull(e.stale) && countOrNull(e.overdue) &&
-    oneOfOrNull(e.freshness, ['fresh', 'empty', 'dormant', 'stale', 'unavailable']) && oneOfOrNull(e.poll, ['ok', 'partial', 'failed', 'unknown']) &&
-    (e.error === null || matches(errorCategory, e.error));
-}
 
 async function sameToken(a: string, b: string) {
   const [left, right] = await Promise.all([a, b].map(async text => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))));
@@ -62,14 +45,14 @@ async function sameToken(a: string, b: string) {
 }
 
 // Returns null above the limit, including a body that lies about or omits its length.
-async function boundedText(request: Request) {
-  if (Number(request.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) return null;
+async function boundedText(request: Request, limit = MAX_BODY_BYTES) {
+  if (Number(request.headers.get('content-length') ?? 0) > limit) return null;
   if (!request.body) return '';
   const chunks: Uint8Array<ArrayBuffer>[] = [];
   let size = 0;
   for await (const chunk of request.body) {
     size += chunk.byteLength;
-    if (size > MAX_BODY_BYTES) return null;
+    if (size > limit) return null;
     chunks.push(chunk);
   }
   return new Blob(chunks).text();
@@ -89,22 +72,35 @@ function message(event: Event, env: Env) {
 const mail = (env: Env, subject: string, text: string) => ({ to: env.ALERT_RECIPIENT, from: ALERT_SENDER, subject, text, html: `<pre>${text}</pre>` });
 
 function monitorMessage(down: boolean, at: string, env: Env) {
-  const text = down
-    ? `The match monitor has not completed a monitor run since ${at}.\n\nCheck the workflow: ${WORKFLOW_URL}`
-    : `The match monitor completed a monitor run again at ${at}.\n\nWorkflow: ${WORKFLOW_URL}`;
+  const state = down ? `The match monitor has not completed a monitor run since ${at}.`
+    : `The match monitor completed a monitor run again at ${at}.`;
+  const text = `${state}\n\nCloudflare receiver logs: ${WORKER_RUN_URL}\nFly monitor: ${FLY_RUN_URL}\nGitHub workflow: ${WORKFLOW_URL}`;
   return mail(env, `[ScoreArc] Monitor ${down ? 'not running' : 'recovered'}`, text);
+}
+
+// The email binding has no cancellation signal. On an ambiguous timeout the
+// sender keeps the same event ID, just as for a lost provider acknowledgment.
+async function sendMail(env: Env, content: ReturnType<typeof mail>) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([env.EMAIL.send(content), new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Email deadline')), 10_000);
+    })]);
+  } finally { clearTimeout(timer); }
 }
 
 // A heartbeat after a down alert is the recovery. Until that email is recorded the alert
 // stays set, so the next heartbeat retries it: like events, at least once. At most one
 // write a minute: a leaked token can spend at most 1,440 D1 writes a day here.
-async function heartbeat(env: Env) {
-  const now = new Date();
-  const row = await env.DB.prepare('INSERT INTO monitor_heartbeat(id, last_at) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET last_at = excluded.last_at WHERE last_at < ? RETURNING alerted_at')
-    .bind(now.toISOString(), new Date(now.getTime() - 60_000).toISOString()).first<{ alerted_at: string | null }>();
+const githubGuard = { query: `SELECT 1 FROM monitor_runtime WHERE id=1 AND ${githubOwner}`, args: [] };
+async function heartbeat(env: Env, guard: { query: string; args: (string | number)[] } = githubGuard, at = Date.now()) {
+  const now = new Date(at);
+  const row = await env.DB.prepare(`INSERT INTO monitor_heartbeat(id, last_at) SELECT 1, ? WHERE EXISTS (${guard.query}) ON CONFLICT(id) DO UPDATE SET last_at = excluded.last_at WHERE last_at < ? RETURNING alerted_at`)
+    .bind(now.toISOString(), ...guard.args, new Date(now.getTime() - 60_000).toISOString()).first<{ alerted_at: string | null }>();
+  if (!row && !await env.DB.prepare(guard.query).bind(...guard.args).first()) return rejected(409);
   if (row?.alerted_at) {
     try {
-      await env.EMAIL.send(monitorMessage(false, now.toISOString(), env));
+      await sendMail(env, monitorMessage(false, now.toISOString(), env));
     } catch (error) {
       logFailure('email', error);
       return empty(503);
@@ -126,7 +122,7 @@ async function checkHeartbeat(env: Env) {
   const detected = new Date().toISOString();
   const row = await env.DB.prepare('SELECT last_at, alerted_at FROM monitor_heartbeat WHERE id = 1').bind().first<{ last_at: string; alerted_at: string | null }>();
   if (!row || Date.now() - Date.parse(row.last_at) <= HEARTBEAT_MAX_AGE_MS || (row.alerted_at && row.alerted_at > row.last_at)) return;
-  await env.EMAIL.send(monitorMessage(true, row.last_at, env));
+  await sendMail(env, monitorMessage(true, row.last_at, env));
   await env.DB.prepare('UPDATE monitor_heartbeat SET alerted_at = ? WHERE id = 1').bind(detected).run();
 }
 
@@ -159,15 +155,50 @@ function rejected(status: number) {
   return empty(status);
 }
 
+async function handleFly(request: Request, env: Env, url: URL) {
+  const action = url.pathname.slice('/fly/'.length);
+  const token = env.FLY_MONITOR_TOKEN;
+  if (url.protocol !== 'https:' || url.search || !['claim','pending','event','final','heartbeat','release'].includes(action) ||
+      !token || token.length < MIN_TOKEN_LENGTH || token === env.RECEIVER_TOKEN ||
+      !await sameToken(request.headers.get('authorization') ?? '', `Bearer ${token}`)) return empty(404);
+  if (request.method !== 'POST') return rejected(405);
+  if (!/^application\/json(\s*;|$)/i.test(request.headers.get('content-type') ?? '')) return rejected(415);
+  const checkpoint = action === 'pending' || action === 'final';
+  const raw = await boundedText(request, checkpoint ? MAX_CHECKPOINT + 256 : MAX_BODY_BYTES);
+  if (raw === null) return rejected(413);
+  let body: Record<string, unknown>;
+  try { body = JSON.parse(raw); } catch { return rejected(400); }
+  if (!body || !validTick(body.tick)) return rejected(400);
+  if (action === 'claim') return Object.keys(body).length === 1 ? claim(env.DB, body.tick) : rejected(400);
+  if (typeof body.leaseUntil !== 'number' || !Number.isSafeInteger(body.leaseUntil) || body.leaseUntil <= body.tick ||
+      Object.keys(body).length !== (checkpoint || action === 'event' ? 3 : 2)) return rejected(400);
+  const lease = { tick: body.tick, leaseUntil: body.leaseUntil };
+  if (action === 'pending' || action === 'final') return saveCheckpoint(env.DB, lease, action, body.checkpoint);
+  if (action === 'release') return release(env.DB, lease);
+  // Use the observed slot for a Fly heartbeat. Replaying the same final never
+  // advances last_at, even if the lease hasn't been released yet.
+  if (action === 'heartbeat') return heartbeat(env, heartbeatGuard(lease), lease.tick);
+  const event = body.event;
+  if (!isEvent(event, true)) return rejected(400);
+  const canSend = () => reservedEvent(env.DB, lease, event);
+  if (!await canSend()) return rejected(409);
+  return acceptEvent(event, env, canSend);
+}
+
 async function handle(request: Request, env: Env) {
   if (!env.RECEIVER_TOKEN || env.RECEIVER_TOKEN.length < MIN_TOKEN_LENGTH || !env.ALERT_RECIPIENT) {
     console.error('alert-receiver: configuration incomplete');
     return empty(500);
   }
-  const path = new URL(request.url).pathname;
-  const route = ['/events/', '/heartbeat/'].find(prefix => path.startsWith(prefix));
+  const url = new URL(request.url);
+  if (url.pathname.startsWith('/fly/')) return handleFly(request, env, url);
+  const path = url.pathname;
+  const route = ['/events/', '/heartbeat/', '/checkpoint/'].find(prefix => path.startsWith(prefix));
   if (!route || !(await sameToken(path.slice(route.length), env.RECEIVER_TOKEN))) return empty(404);
   if (request.method !== 'POST') return rejected(405);
+  if (route === '/checkpoint/') return exportCheckpoint(env.DB);
+  const legacy = await env.DB.prepare(githubGuard.query).bind().first();
+  if (!legacy) return rejected(409);
   if (route === '/heartbeat/') return heartbeat(env);
   if (!/^application\/json(\s*;|$)/i.test(request.headers.get('content-type') ?? '')) return rejected(415);
   const raw = await boundedText(request);
@@ -175,10 +206,12 @@ async function handle(request: Request, env: Env) {
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return rejected(400); }
   if (!isEvent(parsed) || request.headers.get('idempotency-key') !== parsed.eventId) return rejected(400);
+  return acceptEvent(parsed, env, async () => Boolean(await env.DB.prepare(githubGuard.query).bind().first()));
+}
 
+async function acceptEvent(event: Event, env: Env, canSend?: () => Promise<boolean>) {
   // Field order is fixed so that an identical event always compares equal on retry.
-  const event = parsed;
-  const payload = JSON.stringify(KEYS.split(' ').map(key => event[key as keyof Event]));
+  const payload = eventPayload(event);
   const select = () => env.DB.prepare('SELECT payload, emailed_at FROM alert_event WHERE event_id = ?').bind(event.eventId).first<{ payload: string; emailed_at: string | null }>();
   let stored = await select();
   if (!stored) {
@@ -196,8 +229,9 @@ async function handle(request: Request, env: Env) {
   }
   if (stored.payload !== payload) return rejected(409);
   if (stored.emailed_at === null) {
+    if (canSend && !await canSend()) return rejected(409);
     try {
-      await env.EMAIL.send(message(event, env));
+      await sendMail(env, message(event, env));
     } catch (error) {
       logFailure('email', error);
       return empty(503);
@@ -219,9 +253,14 @@ const worker = {
     return work;
   },
   // Cron trigger in wrangler.jsonc. A failure here is retried by the next run.
-  async scheduled(_controller: unknown, env: Env) {
+  async scheduled(_controller: { scheduledTime: number }, env: Env) {
     await Promise.all([
-      dispatchMonitor(env).catch(error => logFailure('dispatch', error)),
+      getMonitorMode(env.DB).then(mode => {
+        if (mode === 'github') return dispatchMonitor(env).catch(error => logFailure('dispatch', error));
+      }).catch(error => {
+        logFailure('monitor', error);
+        throw new Error('Match monitor execution failed');
+      }),
       checkHeartbeat(env).catch(error => logFailure('heartbeat check', error)),
     ]);
   },

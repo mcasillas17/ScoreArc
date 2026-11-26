@@ -214,6 +214,11 @@ export async function selectState({ github, run, initialize = false,
       for (const job of jobs) {
         // Disabled, cancelled while waiting, no runner, or failed in GitHub's own job setup.
         if (ranNoWorkflowStep(job)) continue;
+        // A cancelled or failed handoff can leave Prepare skipped while D1
+        // still owns newer history. A fresh rollback dispatch must retry it.
+        const handoff = job.steps.filter(step => step?.name === 'Fetch drained Fly checkpoint');
+        requireValid(handoff.length <= 1 && handoff.every(step => step.status === 'completed' && step.conclusion === 'skipped'),
+          'Missing checkpoint after attempted Fly rollback');
         const prepare = job.steps.filter((step) => step?.name === 'Prepare pending state');
         requireValid(prepare.length === 1 && prepare[0].status === 'completed' && prepare[0].conclusion === 'skipped',
           'Missing checkpoint after attempted or unproven preparation');

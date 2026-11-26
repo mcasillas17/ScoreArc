@@ -1018,7 +1018,7 @@ advancing every few minutes.
 
 ### Side-by-side Cloudflare trial
 
-The Worker in `infra/match-freshness-shadow` runs every five minutes and writes to its own D1 database. It reads the same season summary endpoint and applies the same incident policy as the Actions job. It records each edition's open state, OPEN/RESOLVED transition and cause. GitHub continues to send every live alert and heartbeat. The shadow has only the reader and `SHADOW_DB`, with no public HTTP handler, notification credentials or receiver binding.
+The trial Worker in `infra/match-freshness-shadow` ran every five minutes and wrote to its own D1 database. It reads the same season summary endpoint and applies the same incident policy as the Actions job. It records each edition's open state, OPEN/RESOLVED transition and cause. GitHub continues to send every live alert and heartbeat. The shadow has only the reader and `SHADOW_DB`, with no public HTTP handler, notification credentials or receiver binding.
 
 **Local smoke test.** From `infra/match-freshness-shadow`, use Wrangler 4.123.0 (the receiver's version). Apply the migration and start the local Workers runtime:
 
@@ -1029,7 +1029,7 @@ wrangler dev --local --test-scheduled --port 8794
 
 In a second terminal, run `curl --fail 'http://127.0.0.1:8794/__scheduled?cron=*/5+*+*+*+*'`. This makes real GETs to the reader and writes local SQLite. Run it again in the next five-minute slot for a comparable pair. Inspect local rows with `wrangler d1 execute scorearc-match-freshness-shadow --local --command 'SELECT tick,previous_tick,requests,finished_ms-started_ms AS wall_ms FROM shadow_tick ORDER BY tick DESC LIMIT 3'`. The first row has no prior state. Overlapping executions record a conflict or skip a completed tick. Only whole observations commit. Inserts retain the last two days of samples.
 
-**Hosted trial.** The trial started on November 26, 2026. To redeploy, run `wrangler d1 info scorearc-match-freshness-shadow --json` from the same directory and compare its UUID with the `SHADOW_DB` binding in `wrangler.jsonc`. Apply pending migrations with `wrangler d1 migrations apply scorearc-match-freshness-shadow --remote`, then run `wrangler deploy` from the reviewed checkout. To pause the trial, set this Worker's `triggers.crons` to `[]` and redeploy it. The saved D1 rows remain available for comparison, and the receiver continues dispatching GitHub.
+**Hosted trial.** The trial started on November 26, 2026. The shadow schedule was paused the same day after the capacity check below. Cloudflare reported an empty trigger list for the shadow and a five-minute schedule for the production receiver. A future side-by-side trial can restore `*/5 * * * *` on the dedicated shadow Worker. Its saved D1 rows remain available after pausing.
 
 **Compare one observation.** Use the pending artifact from a completed, trusted first-attempt watchdog run on main. It contains the transitions recorded before notification delivery. From the repo root, substitute its numeric run ID below. Set `storage=--local` for the smoke test or `storage=--remote` for the approved hosted trial.
 
@@ -1057,7 +1057,61 @@ Exit 0 means every scope agreed on open state, transition and cause. Exit 1 list
 | 08:35 | [45784403237](https://github.com/mcasillas17/ScoreArc/actions/runs/45784403237) | Baseline for the next observation | 219 ms | 1.354 s |
 | 08:40 | [45785105363](https://github.com/mcasillas17/ScoreArc/actions/runs/45785105363) | All 15 agreed on open state, transition and cause | 334 ms | 4.177 s |
 
-The 08:40 observations finished 25 seconds apart. Every edition was quiet. Comparison during live match play and evidence of an incident opening and resolving remain outstanding before cutover.
+The 08:40 observations finished 25 seconds apart. Every edition was quiet. This sample covers a quiet window. The receiver integration test exercises OPEN and RESOLVED with the real producer, database schema and receiver protocol. Track live-match observations and real incident delivery separately.
+
+The shadow schedule was paused after Cloudflare confirmed the account was on Workers Free. Its 10 ms cron CPU allowance was below the two hosted measurements. ScoreArc moved the season checks to the existing Fly monitoring machine in the design below. [Worker limits](https://developers.cloudflare.com/workers/platform/limits/)
+
+### Fly monitor and handoff
+
+The private `scorearc-observability` machine runs the timer, checks every monitored season against the public reader, and applies the same alert policy as GitHub. The existing Cloudflare receiver handles small authenticated requests, owns the D1 checkpoint, sends email and checks for missed heartbeats every five minutes. A Fly outage is visible to that independent cron. Grafana and log shipping run separately from the watchdog. The monitoring image embeds the competition registry and reader code. Rebuild it when those inputs change.
+
+The receiver's `monitor_runtime.mode` selects the producer. In `github` mode its cron dispatches the Actions workflow. In `draining` it stops dispatching, and in `fly` it admits the Fly sender. The timer starts on UTC five-minute slots. A claim grants one writer a bounded lease. The receiver saves pending reservations before email, verifies D1 delivery receipts before accepting the final checkpoint, and accepts a heartbeat only after the queue is settled. A crash retains acknowledged event IDs and the next eligible tick honors retry backoff. The GitHub and Fly tokens are separate. Fly's token and the receiving address belong in their respective platforms' secret stores.
+
+**Capacity evidence, November 26, 2026.** The packaged Node 26.13.1 runner's read-only probe on the existing shared-CPU, 2 GB Fly machine checked all 15 seasons in 1.064 seconds, consumed 537 ms of CPU and peaked at 116 MiB RSS. There were zero open incidents and zero reader errors. In two isolated hosted Workers Free rehearsals, the receiver processed ten authenticated requests at 1–4 ms of CPU each. Both saved the final sequence 88, retained 32 receipts and advanced the heartbeat. Those quiet rehearsals used healthy sample observations and exercised no real email sends.
+
+**Preflight and staging.** Use Node 26, Wrangler 4.123.0, GitHub CLI, unzip, Fly CLI and a local Docker builder. From the repo root on merged code, run:
+
+```sh
+receiver=infra/alert-receiver/wrangler.jsonc
+node scripts/cutover-match-freshness.mjs preflight
+flyctl status -a scorearc-observability
+wrangler d1 migrations apply DB --remote --config "$receiver"
+```
+
+Preflight reads the actual deployed receiver binding, newest successful first-attempt main run, final artifact, epoch, scope set and receiver delivery receipts. The additive D1 migration starts in GitHub mode. Supply the same new, unguessable `FLY_MONITOR_TOKEN` to the receiver and monitoring machine through private input. Stage the Fly secret before deploying the image. Deploy the receiver using `wrangler deploy --config "$receiver"` with its new token and retain the existing email binding and secrets. The receiver configuration works on Workers Free. Deploy the Fly image on the existing machine and volume using the [monitoring stack instructions](../../infra/grafana/README.md#fly-monitoring-image). Verify Grafana and Loki health, a successful GitHub heartbeat, and a Fly tick reporting `skipped` in GitHub mode. The Fly `observe` command only reads match data and can be run before either credential is set.
+
+**Transfer ownership.** Run these commands between GitHub runs. The conditional update must return one draining row. Allow any already dispatched run to finish:
+
+```sh
+wrangler d1 execute DB --remote --config "$receiver" --command "UPDATE monitor_runtime SET mode='draining' WHERE id=1 AND mode='github' AND checkpoint IS NULL AND last_tick IS NULL AND lease_until=0 RETURNING mode"
+gh workflow disable match-freshness.yml --repo mcasillas17/ScoreArc
+node scripts/cutover-match-freshness.mjs check
+node scripts/cutover-match-freshness.mjs apply RUN_ID ARTIFACT_ID
+```
+
+Replace the two IDs with the values printed by `check`. Apply verifies them again and atomically imports the fully acknowledged GitHub final state, including any open incidents. Before import, an empty draining row can return to GitHub by enabling the workflow and changing `mode` back to `github` where `checkpoint IS NULL AND last_tick IS NULL AND lease_until=0`. If an apply attempt reports an ambiguous result, read back the row before taking that path.
+
+**Verify.** Observe two consecutive Fly slots with advancing final checkpoints and heartbeats, a released lease, and zero new GitHub watchdog runs. The first tick may skip a slot already observed by the imported checkpoint. Keep the dedicated shadow Worker cron paused. Recheck reader errors and CPU through a live match.
+
+```sh
+wrangler d1 execute DB --remote --config "$receiver" --command "SELECT mode,last_tick,lease_until,json_extract(checkpoint,'$.phase') AS phase,json_extract(checkpoint,'$.run.tick') AS committed_tick,json_extract(checkpoint,'$.sequence') AS sequence,json_array_length(checkpoint,'$.pending') AS pending,json_extract(checkpoint,'$.monitorFailure') AS failure,(SELECT last_at FROM monitor_heartbeat WHERE id=1) AS heartbeat FROM monitor_runtime"
+gh run list --repo mcasillas17/ScoreArc --workflow match-freshness.yml --limit 3
+```
+
+**Return ownership to GitHub.** Park an idle, fully acknowledged checkpoint between ticks. If deliveries are pending or a crashed process has an outstanding lease, let the next eligible Fly tick finalize them. Keep the receiver, its GitHub dispatch secret, and both repository enablement variables available for rollback.
+
+```sh
+wrangler d1 execute DB --remote --config "$receiver" --command "UPDATE monitor_runtime SET mode='draining' WHERE id=1 AND mode='fly' AND lease_until=0 AND json_extract(checkpoint,'$.phase')='final' AND json_array_length(checkpoint,'$.pending')=0 AND json_array_length(checkpoint,'$.reserved')=0 AND json_type(checkpoint,'$.monitorFailure')='null' AND (json_extract(checkpoint,'$.run.tick')=last_tick OR json_extract(checkpoint,'$.run.repository')='mcasillas17/ScoreArc') RETURNING json_extract(checkpoint,'$.run.fly') AS fly,last_tick"
+```
+
+For a Fly-authored checkpoint, enable the workflow, run the explicit restore and wait for its final upload. It exports the parked receiver checkpoint and preserves the entire history without making observations, sending emails or beating the heartbeat:
+
+```sh
+gh workflow enable match-freshness.yml --repo mcasillas17/ScoreArc
+gh workflow run match-freshness.yml --repo mcasillas17/ScoreArc --ref main -f restore_from_fly=true
+```
+
+If the parked checkpoint still belongs to the original GitHub run, leave the workflow disabled and skip the restore dispatch. In either case run `node scripts/cutover-match-freshness.mjs rollback-check`, then `node scripts/cutover-match-freshness.mjs rollback-apply RUN_ID ARTIFACT_ID` with the printed IDs. This verifies the parked history against GitHub before clearing the D1 producer row and returning ownership. Re-enable the workflow if it was disabled. Verify the next scheduled GitHub run restores the correct sequence and writes a heartbeat.
 
 ## Schema and separately approved release order
 
