@@ -9,6 +9,7 @@
   "d1_databases": [{
     "binding": "SHADOW_DB",
     "database_name": "scorearc-match-freshness-shadow",
+    "database_id": "f1560995-f270-4a68-ab35-e80348cb95b0",
     "migrations_dir": "migrations"
   }]
 }
