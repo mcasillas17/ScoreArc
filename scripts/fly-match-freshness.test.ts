@@ -1,6 +1,6 @@
+import { readFile } from 'node:fs/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { observeOnce, receiverRPC, runFlyTick, runSchedule } from './fly-match-freshness.mjs';
-import registry from '../backend/config/competitions.json';
 import { currentScopes } from './match-freshness-reader.mjs';
 import { newSignal } from './match-freshness-policy.mjs';
 
@@ -113,7 +113,8 @@ describe('Fly match monitor', () => {
     const network = vi.fn().mockRejectedValue(new Error('Only the injected reader should run'));
     vi.stubGlobal('fetch', network);
     const check = vi.fn(async () => failed);
-    const editions = currentScopes(registry);
+    const registry = await readFile(new URL('../backend/config/competitions.json', import.meta.url), 'utf8');
+    const editions = currentScopes(JSON.parse(registry));
     expect(await observeOnce({ check })).toMatchObject({ status: 'observe', scopes: editions.length, open: editions.length, errors: editions.length,
       durationMs: expect.any(Number), peakRssMiB: expect.any(Number) });
     expect(check.mock.calls).toEqual(editions.map(scope => [expect.objectContaining({ ...scope, baseURL })]));
