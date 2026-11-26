@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { load } from 'js-yaml';
 import { assertReleaseContext, assertVercelProject, assessFlyDeployFailure, assessIngesterMachines, flyAbortVerifiedVersion, ingesterApp, planRelease, releaseStatus } from './production-policy.mjs';
 
 const sha = 'a'.repeat(40);
@@ -319,6 +320,17 @@ describe('workflow wiring', () => {
   const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
   const production = ci.split('\n  production:\n')[1];
 
+  it('runs automatic CI on PRs and main, replacing only superseded PR runs', () => {
+    const workflow = load(ci) as { on: Record<string, unknown>; concurrency: unknown };
+    expect(workflow.on.push).toEqual({ branches: ['main'] });
+    expect(workflow.on.pull_request).toBeNull();
+    expect(workflow.on.workflow_dispatch).toHaveProperty('inputs.release');
+    expect(workflow.concurrency).toEqual({
+      group: '${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}',
+      'cancel-in-progress': "${{ github.event_name == 'pull_request' }}",
+    });
+  });
+
   it('retains the required test name and gates every production caller on its success', () => {
     const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
     // `test` gates on both halves and is never skipped: always() plus an explicit
@@ -574,11 +586,13 @@ describe('ingester publishing step with a stand-in flyctl', () => {
 
 describe('PR schema-head notice', () => {
   const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
-  const job = ci.split('\n  migration-notice:\n')[1]?.split('\n  production:\n')[0] ?? '';
-  const shell = (job.split('run: |\n')[1] ?? '').split('\n').map(line => line.trimStart()).join('\n');
+  const workflow = load(ci) as { jobs: { backend: { steps: { name?: string; uses?: string; run?: string }[] } } };
+  const steps = workflow.jobs.backend.steps;
+  const warning = steps.find(step => step.name === 'Warn when this PR raises the schema head');
 
   // A pull_request checkout is the merge commit, so HEAD^1 is the base it merges into.
   function notice(change: (repo: string) => void) {
+    if (!warning?.run) throw new Error('Missing PR schema-head warning');
     const repo = mkdtempSync(join(tmpdir(), 'scorearc-migration-notice-'));
     const git = (...args: string[]) => {
       const result = spawnSync('git', ['-c', 'user.email=ci@example.invalid', '-c', 'user.name=ci', ...args],
@@ -603,7 +617,7 @@ describe('PR schema-head notice', () => {
       git('commit', '-q', '-m', 'main moved');
       git('merge', '-q', '--no-ff', '-m', 'merge', 'pr');
       const summary = join(repo, 'summary.md');
-      const result = spawnSync('/bin/bash', ['-e', '-c', shell], {
+      const result = spawnSync('/bin/bash', ['-e', '-c', warning.run], {
         cwd: repo, encoding: 'utf8', env: { NODE_ENV: 'test', PATH: process.env.PATH, GITHUB_STEP_SUMMARY: summary },
       });
       return { ...result, summary: existsSync(summary) ? readFileSync(summary, 'utf8') : '' };
@@ -612,11 +626,15 @@ describe('PR schema-head notice', () => {
     }
   }
 
-  it('runs only on pull requests, outside the release path', () => {
-    expect(job).toContain("if: github.event_name == 'pull_request'");
-    expect(job).toContain('fetch-depth: 2');
-    expect(job).toContain('persist-credentials: false');
-    expect(job).not.toMatch(/secrets\.|needs:/);
+  it('uses the backend checkout and reports an advisory warning only on PRs', () => {
+    expect(workflow.jobs).not.toHaveProperty('migration-notice');
+    expect(steps[0]).toMatchObject({
+      uses: expect.stringMatching(/^actions\/checkout@/),
+      with: { 'fetch-depth': "${{ github.event_name == 'pull_request' && 2 || 1 }}", 'persist-credentials': false },
+    });
+    expect(steps[1]).toBe(warning);
+    expect(warning).toMatchObject({ if: "github.event_name == 'pull_request'", 'continue-on-error': true });
+    expect(warning?.run).not.toMatch(/secrets\./);
   });
   it('names the new schema head and asks for the production apply before merge', () => {
     const result = notice(repo => {
