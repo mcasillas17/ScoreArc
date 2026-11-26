@@ -2,9 +2,12 @@
   "name": "scorearc-alert-receiver",
   "main": "worker.ts",
   "compatibility_date": "2026-08-01",
-  // Every 5 minutes: starts the monitor workflow (GitHub's schedule is unreliable) and
-  // alerts when no monitor heartbeat arrived for 60 minutes.
+  // Every five minutes D1 selects the monitor producer. The missed-heartbeat
+  // alarm runs in every mode, including an operator handoff.
   "triggers": { "crons": ["*/5 * * * *"] },
+  // The hosted reader checks took hundreds of milliseconds of CPU. Pin the
+  // paid plan's five-minute-cron allowance so deployment verifies eligibility.
+  "limits": { "cpu_ms": 30000 },
   // Request URLs contain the receiver token, so invocation logs stay off. Only the
   // Worker's own sanitized failure lines are kept.
   "observability": { "enabled": true, "logs": { "invocation_logs": false } },

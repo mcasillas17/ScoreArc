@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_SENDS } from './match-freshness-checkpoint.mjs';
 import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -7,9 +8,8 @@ const yaml = createRequire(import.meta.url)('js-yaml');
 const registry: { id: string; name: string; currentSeasonId: string; seasons: Record<string, { monitored: boolean }> }[] =
   createRequire(import.meta.url)('../backend/config/competitions.json');
 const SCOPES = registry.flatMap(c => Object.values(c.seasons)).filter(s => s?.monitored).length;
-it('sends every scope\'s alert in one run', async () => {
-  const source = await readFile(new URL('./match-freshness-monitor.mjs', import.meta.url), 'utf8');
-  expect(Number(/const MAX_SENDS = (\d+);/.exec(source)?.[1])).toBeGreaterThanOrEqual(SCOPES);
+it('sends every scope\'s alert in one run', () => {
+  expect(MAX_SENDS).toBeGreaterThanOrEqual(SCOPES);
 });
 const document = () => readFile('.github/workflows/match-freshness.yml', 'utf8').then(s => yaml.load(s));
 describe('opt-in durable match workflow', () => {
@@ -24,6 +24,9 @@ describe('opt-in durable match workflow', () => {
     expect(select.env.RECOVERY_RUN_ID).toBe("${{ inputs.recovery_run_id || '' }}");
     expect(select.env.RECOVERY_ARTIFACT_ID).toBe("${{ inputs.recovery_artifact_id || '' }}");
     expect(workflow.on.workflow_dispatch.inputs.initialize_state.default).toBe(false);
+    expect(workflow.on.workflow_dispatch.inputs.restore_from_cloudflare.default).toBe(false);
+    expect(workflow.jobs.check.steps.find((s: any) => s.id === 'prepare').env.MATCH_FRESHNESS_WEBHOOK_URL).toBeUndefined();
+    expect(workflow.jobs.check.steps.find((s: any) => s.id === 'cloudflare').env.MATCH_FRESHNESS_WEBHOOK_URL).toBe('${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}');
     expect(workflow.on.workflow_dispatch.inputs.recovery_run_id.default).toBe('');
     expect(workflow.on.workflow_dispatch.inputs.recovery_artifact_id.default).toBe('');
     expect(workflow.jobs.check.if).toContain("vars.MATCH_FRESHNESS_ENABLED == 'true'");
@@ -89,10 +92,11 @@ async function local(handler: RequestListener) {
   const address = server.address(); if (!address || typeof address === 'string') throw new Error('address');
   return `http://127.0.0.1:${address.port}`;
 }
-function condition(expression: string | undefined, steps: Record<string, any>, vars: Record<string, string>, ref: string) {
+function condition(expression: string | undefined, steps: Record<string, any>, vars: Record<string, string>, ref: string, restoreFromCloudflare = false) {
   const success = Object.values(steps).every(s => s.outcome !== 'failure');
   if (!expression) return success;
   const source = expression.replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+    .replaceAll('inputs.restore_from_cloudflare', String(restoreFromCloudflare))
     .replaceAll('success()', String(success)).replaceAll('always()', 'true')
     .replace(/steps\.([\w]+)\.outputs\.([\w]+)|steps\.([\w]+)\.outcome|vars\.([\w]+)|github\.ref/g,
       // GitHub compares strings case-insensitively; this workflow's literals are lowercase.
@@ -122,8 +126,10 @@ async function harness() {
     const payload = JSON.parse(raw); notifications.push(payload);
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ eventId: payload.eventId }));
   })}/events/${'t'.repeat(40)}`;
+  let cloudflareState: object | null = null;
+  const cloudflareFetch = vi.fn(async () => cloudflareState ? Response.json(cloudflareState) : new Response(null, { status: 409 }));
   async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false, event = 'workflow_dispatch',
-    checkpointCommitted = '', ref = 'refs/heads/main', recoveryRunId = '', recoveryArtifactId = '' } = {}) {
+    restoreFromCloudflare = false, checkpointCommitted = '', ref = 'refs/heads/main', recoveryRunId = '', recoveryArtifactId = '' } = {}) {
     now += 600000;
     const id = history.length + 100;
     const iso = new Date(now).toISOString();
@@ -146,7 +152,8 @@ async function harness() {
     if (!condition(workflow.jobs.check.if, steps, vars, ref)) return { steps, github, id };
     const dir = await mkdtemp(join(tmpdir(), 'monitor-workflow-')); dirs.push(dir);
     const workDir = join(dir, 'watchdog-state'); const output = join(dir, 'output');
-    const env = { ...vars, NODE_ENV: 'test' as const, GITHUB_REPOSITORY: current.repository.full_name, GITHUB_REF: 'refs/heads/main', GITHUB_SHA: current.head_sha,
+    const env = { ...vars, NODE_ENV: 'test' as const, GITHUB_REPOSITORY: current.repository.full_name, GITHUB_REF: ref,
+      GITHUB_EVENT_NAME: event, GITHUB_WORKFLOW_REF: `${current.repository.full_name}/${current.path}@${ref}`, RESTORE_FROM_CLOUDFLARE: String(restoreFromCloudflare), GITHUB_SHA: current.head_sha,
       GITHUB_RUN_ID: String(id), GITHUB_RUN_NUMBER: String(id), GITHUB_RUN_ATTEMPT: '1', GITHUB_OUTPUT: output,
       INITIALIZE_STATE: String(initialize), RECOVERY_RUN_ID: recoveryRunId, RECOVERY_ARTIFACT_ID: recoveryArtifactId,
       MATCH_FRESHNESS_WEBHOOK_URL: webhookURL, PENDING_ARTIFACT_ID: '', CHECKPOINT_COMMITTED: '' };
@@ -154,14 +161,15 @@ async function harness() {
     for (const step of workflow.jobs.check.steps) {
       if (!step.id) continue;
       const entry = steps[step.id] = { outcome: 'skipped', outputs: {} as Record<string, string> };
-      if (condition(step.if, steps, vars, env.GITHUB_REF)) {
+      if (condition(step.if, steps, vars, env.GITHUB_REF, restoreFromCloudflare)) {
         try {
           await writeFile(output, '');
           if (step.run) {
             const phase = step.run.split(' ').at(-1);
             env.PENDING_ARTIFACT_ID = steps.pending?.outputs['artifact-id'] ?? '';
             if (step.env?.CHECKPOINT_COMMITTED) env.CHECKPOINT_COMMITTED = checkpointCommitted || String(condition(step.env.CHECKPOINT_COMMITTED, steps, vars, env.GITHUB_REF));
-            const result = await monitor.runPhase({ phase, env, workDir, now, baseURL, github });
+            const phaseEnv = phase === 'restore-cloudflare' ? { ...env, MATCH_FRESHNESS_WEBHOOK_URL: 'https://receiver.example/events/secret' } : env;
+            const result = await monitor.runPhase({ phase, env: phaseEnv, workDir, now, baseURL, github, fetchImpl: cloudflareFetch });
             if (result.exitCode) throw new Error('Phase failed');
             entry.outputs = Object.fromEntries((await readFile(output, 'utf8')).trim().split('\n').filter(Boolean).map(line => line.split('=')));
           } else if (step.uses.startsWith('actions/download-artifact@')) {
@@ -185,9 +193,40 @@ async function harness() {
     history.push({ ...current, status: 'completed', conclusion: 'failure' });
     return { steps, github, id };
   }
-  return { run, artifacts, notifications, heartbeats, missingScopes, checks: () => checks, healthy: () => { healthy = true; }, unhealthy: () => { healthy = false; }, receiverDown: (down: boolean) => { receiverDown = down; }, heartbeatDown: (down: boolean) => { heartbeatDown = down; } };
+  return { run, artifacts, cloudflareFetch, setCloudflareState: (state: object) => { cloudflareState = state; }, notifications, heartbeats, missingScopes, checks: () => checks, healthy: () => { healthy = true; }, unhealthy: () => { healthy = false; }, receiverDown: (down: boolean) => { receiverDown = down; }, heartbeatDown: (down: boolean) => { heartbeatDown = down; } };
 }
 describe('enabled workflow artifact boundaries', () => {
+  it('hands a native checkpoint to the following Actions run without polling, sending, or pinging in the handoff', async () => {
+    const h = await harness();
+    const previous = await h.run({ initialize: true });
+    const native = JSON.parse(h.artifacts.get(previous.id)!.find(a => a.name === 'match-freshness-state').bytes);
+    native.run = { worker: 'scorearc-alert-receiver', tick: Date.parse(native.updatedAt) };
+    h.setCloudflareState(native);
+    h.heartbeats.length = 0; h.notifications.length = 0;
+    const checks = h.checks();
+    const rollback = await h.run({ restoreFromCloudflare: true });
+    expect(rollback.github).not.toHaveBeenCalled();
+    expect(rollback.steps.select.outcome).toBe('skipped'); expect(rollback.steps.restore.outcome).toBe('skipped');
+    expect(rollback.steps.cloudflare.outcome).toBe('success'); expect(rollback.steps.result.outcome).toBe('skipped');
+    expect(h.cloudflareFetch).toHaveBeenCalledOnce(); expect(h.checks()).toBe(checks);
+    expect(h.heartbeats).toEqual([]); expect(h.notifications).toEqual([]);
+    expect(rollback.steps.final.outcome).toBe('success');
+    const files = h.artifacts.get(rollback.id)!;
+    const final = JSON.parse(files.find(a => a.name === 'match-freshness-state').bytes);
+    expect(final).toEqual({ ...native, run: expect.objectContaining({ id: rollback.id, repository: 'mcasillas17/ScoreArc' }) });
+    expect(JSON.parse(files.find(a => a.name === 'match-freshness-pending').bytes)).toEqual({ ...final, phase: 'pending' });
+    const next = await h.run();
+    expect(next.steps.select.outputs.run_id).toBe(String(rollback.id)); expect(next.steps.result.outcome).toBe('success');
+    expect(h.checks()).toBe(checks + SCOPES); expect(h.heartbeats).toHaveLength(1); expect(h.notifications).toEqual([]);
+  });
+  it('treats a failed checkpoint handoff as a barrier to older Actions history', async () => {
+    const h = await harness(); h.healthy(); await h.run({ initialize: true });
+    const rollback = await h.run({ restoreFromCloudflare: true });
+    expect(rollback.steps.cloudflare.outcome).toBe('failure'); expect(rollback.steps.prepare.outcome).toBe('skipped');
+    expect(rollback.steps.pending.outcome).toBe('skipped'); expect(rollback.steps.result.outcome).toBe('skipped');
+    const next = await h.run();
+    expect(next.steps.select.outcome).toBe('failure'); expect(next.steps.prepare.outcome).toBe('skipped');
+  });
   it('reports both Nations Leagues and opens and resolves only the missing reader scope', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const h = await harness();

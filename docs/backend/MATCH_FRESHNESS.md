@@ -1029,7 +1029,7 @@ wrangler dev --local --test-scheduled --port 8794
 
 In a second terminal, run `curl --fail 'http://127.0.0.1:8794/__scheduled?cron=*/5+*+*+*+*'`. This makes real GETs to the reader and writes local SQLite. Run it again in the next five-minute slot for a comparable pair. Inspect local rows with `wrangler d1 execute scorearc-match-freshness-shadow --local --command 'SELECT tick,previous_tick,requests,finished_ms-started_ms AS wall_ms FROM shadow_tick ORDER BY tick DESC LIMIT 3'`. The first row has no prior state. Overlapping executions record a conflict or skip a completed tick. Only whole observations commit. Inserts retain the last two days of samples.
 
-**Hosted trial.** The trial started on November 26, 2026. To redeploy, run `wrangler d1 info scorearc-match-freshness-shadow --json` from the same directory and compare its UUID with the `SHADOW_DB` binding in `wrangler.jsonc`. Apply pending migrations with `wrangler d1 migrations apply scorearc-match-freshness-shadow --remote`, then run `wrangler deploy` from the reviewed checkout. To pause the trial, set this Worker's `triggers.crons` to `[]` and redeploy it. The saved D1 rows remain available for comparison, and the receiver continues dispatching GitHub.
+**Hosted trial.** The trial started on November 26, 2026. The shadow schedule was paused the same day after the capacity check below. Cloudflare reported an empty trigger list for the shadow and a five-minute schedule for the production receiver. A future side-by-side trial can restore `*/5 * * * *` on the dedicated shadow Worker. Its saved D1 rows remain available after pausing.
 
 **Compare one observation.** Use the pending artifact from a completed, trusted first-attempt watchdog run on main. It contains the transitions recorded before notification delivery. From the repo root, substitute its numeric run ID below. Set `storage=--local` for the smoke test or `storage=--remote` for the approved hosted trial.
 
@@ -1057,7 +1057,62 @@ Exit 0 means every scope agreed on open state, transition and cause. Exit 1 list
 | 08:35 | [45784403237](https://github.com/mcasillas17/ScoreArc/actions/runs/45784403237) | Baseline for the next observation | 219 ms | 1.354 s |
 | 08:40 | [45785105363](https://github.com/mcasillas17/ScoreArc/actions/runs/45785105363) | All 15 agreed on open state, transition and cause | 334 ms | 4.177 s |
 
-The 08:40 observations finished 25 seconds apart. Every edition was quiet. Comparison during live match play and evidence of an incident opening and resolving remain outstanding before cutover.
+The 08:40 observations finished 25 seconds apart. Every edition was quiet. This sample covers a quiet window. The receiver integration test exercises OPEN and RESOLVED with the real producer, database schema and receiver protocol. Track live-match observations and real incident delivery separately.
+
+### Native Cloudflare monitor and handoff
+
+The active producer is selected by `monitor_runtime.mode` in the **receiver** database. In `github` mode its cron dispatches the Actions workflow. In `draining` mode the receiver stops dispatching. In `cloudflare` mode the receiver itself checks the same monitored seasons and emails through its existing binding. The existing missed-heartbeat check runs in all three modes. Actions enablement variables only govern the GitHub producer. A merge alone leaves the active producer in place.
+
+Each native run leases its five-minute slot, writes the pending checkpoint before sending, records acknowledgments using the existing event IDs and saves the final checkpoint before sending a heartbeat. D1 holds the latest checkpoint and the existing durable email receipts. The 20-minute lease outlives a scheduled invocation and prevents an overlapping sender after a crash. Check the Worker logs by time and event ID. An ambiguous email or a missed heartbeat uses the same at-least-once recovery behavior as GitHub. A stopped receiver cron also stops its own outage check.
+
+The first hosted samples consumed 219–334 ms of CPU. On November 26, 2026, an inactive version upload with the explicit 30-second CPU allowance returned Cloudflare error 100328 and confirmed the account was on Workers Free. Its published five-minute cron allowance is 10 ms. The active receiver and GitHub sender continued running. The following native handoff requires capacity for the measured workload. Rebuild and redeploy the receiver from merged source whenever its reader, policy, checkpoint code or monitored competition registry changes. [Cloudflare Worker limits](https://developers.cloudflare.com/workers/platform/limits/)
+
+**Switch to Cloudflare.** Work from the merged commit, using Node 26, GitHub CLI, unzip and Wrangler 4.123.0. Run the following from the repository root. The first deployment keeps dispatching GitHub. Check that a normal GitHub run and heartbeat succeed after deployment, then drain between runs. Keep the harvested GitHub artifacts available throughout the handoff.
+
+```sh
+receiver=infra/alert-receiver/wrangler.jsonc
+wrangler d1 info scorearc-alert-receiver --config "$receiver" --json
+wrangler d1 migrations apply scorearc-alert-receiver --remote --config "$receiver"
+wrangler deploy --config "$receiver"
+# After verifying the new receiver in github mode:
+wrangler d1 execute DB --remote --config "$receiver" --command "UPDATE monitor_runtime SET mode='draining' WHERE id=1 AND mode='github' AND checkpoint IS NULL AND last_tick IS NULL AND lease_until=0 RETURNING mode"
+gh workflow disable match-freshness.yml --repo mcasillas17/ScoreArc
+node scripts/cutover-match-freshness.mjs check
+node scripts/cutover-match-freshness.mjs apply RUN_ID ARTIFACT_ID
+```
+
+The database UUID is pinned in the receiver config. Replace the two IDs with the ones printed by `check`. The importer verifies the disabled workflow, idle runs, newest first-attempt main run, successful checkpoint steps, artifact integrity, production scopes and a fully acknowledged final state. It preserves any open incident and its ID. A failure before import leaves GitHub's original checkpoint available. To resume dispatch at that boundary, re-enable the workflow and set `mode='github'` only where `mode='draining' AND checkpoint IS NULL AND last_tick IS NULL AND lease_until=0`.
+
+**Verify the switch.** Observe two consecutive native slots with advancing final checkpoints and heartbeats, and verify GitHub has no new watchdog runs. The first native observation may skip a slot already covered by the imported GitHub checkpoint. After acceptance, apply the empty shadow trigger list to retire its extra reader requests. Keep both D1 databases. Check the receiver's CPU and error metrics through the next live match.
+
+```sh
+wrangler d1 execute DB --remote --config "$receiver" --command "SELECT mode,last_tick,lease_until,json_extract(checkpoint,'$.phase') AS phase,json_extract(checkpoint,'$.run.tick') AS committed_tick,json_extract(checkpoint,'$.sequence') AS sequence,json_array_length(checkpoint,'$.pending') AS pending,json_extract(checkpoint,'$.monitorFailure') AS failure,(SELECT last_at FROM monitor_heartbeat WHERE id=1) AS heartbeat FROM monitor_runtime"
+gh run list --repo mcasillas17/ScoreArc --workflow match-freshness.yml --limit 3
+wrangler triggers deploy --config infra/match-freshness-shadow/wrangler.jsonc
+```
+
+**Return ownership to GitHub.** Park a settled native checkpoint between ticks. If the queue has unacknowledged deliveries, restore the receiver's ability to send and let the native producer finish them first. A crashed invocation may hold its lease until expiry. Let its successor finalize before parking. Keep the receiver deployed throughout the rollback.
+
+```sh
+wrangler d1 execute DB --remote --config "$receiver" --command "UPDATE monitor_runtime SET mode='draining' WHERE id=1 AND mode='cloudflare' AND lease_until=0 AND json_extract(checkpoint,'$.run.worker')='scorearc-alert-receiver' AND json_extract(checkpoint,'$.phase')='final' AND json_array_length(checkpoint,'$.pending')=0 AND json_array_length(checkpoint,'$.reserved')=0 AND json_type(checkpoint,'$.monitorFailure')='null' RETURNING last_tick"
+gh workflow enable match-freshness.yml --repo mcasillas17/ScoreArc
+gh workflow run match-freshness.yml --repo mcasillas17/ScoreArc --ref main -f restore_from_cloudflare=true
+```
+
+The restore run reads the parked checkpoint through the token-protected receiver, validates it, and publishes both GitHub artifacts. The restore performs zero reader checks, notifications or heartbeats. Leave both repository enablement variables set to literal `true`. If the transfer fails, keep the row parked and start a fresh restore dispatch. Before releasing the row, verify the restore run completed successfully on main, both uploads succeeded and the final artifact matches D1, apart from the producer's run identity. Retain the downloaded evidence.
+
+```sh
+evidence=$(mktemp -d)
+gh run download RESTORE_RUN_ID --repo mcasillas17/ScoreArc --name match-freshness-state --dir "$evidence" &&
+wrangler d1 execute DB --remote --config "$receiver" --command "SELECT last_tick,checkpoint FROM monitor_runtime WHERE id=1 AND mode='draining' AND lease_until=0" --json > "$evidence/parked.json" &&
+jq -Se '.[0].results[0].checkpoint | fromjson | del(.run)' "$evidence/parked.json" > "$evidence/native-history.json" &&
+jq -Se 'del(.run)' "$evidence/state.json" > "$evidence/github-history.json" &&
+cmp "$evidence/native-history.json" "$evidence/github-history.json" &&
+tick=$(jq -er '.[0].results[0].last_tick | select(type == "number" and . > 0 and . % 300000 == 0)' "$evidence/parked.json") &&
+wrangler d1 execute DB --remote --config "$receiver" --command "UPDATE monitor_runtime SET mode='github',checkpoint=NULL,last_tick=NULL WHERE id=1 AND mode='draining' AND last_tick=$tick AND lease_until=0 RETURNING mode"
+```
+
+Verify the next scheduled GitHub run restores the returned artifact, sends its heartbeat and retains the sequence. If the initial forward import succeeded but a native run has yet to commit, compare its parked GitHub checkpoint in full with the source final artifact before returning the empty dispatcher to GitHub.
 
 ## Schema and separately approved release order
 

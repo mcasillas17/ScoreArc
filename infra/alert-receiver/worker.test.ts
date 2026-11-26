@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import * as monitor from '../../scripts/match-freshness-monitor.mjs';
+import { currentScopes } from '../../scripts/match-freshness-reader.mjs';
+import registry from '../../backend/config/competitions.json';
 import worker, { type Env } from './worker';
 
 const MAX_EVENTS_PER_DAY = 300;
@@ -245,6 +247,86 @@ describe('alert receiver protocol', () => {
   });
 });
 
+describe('scheduled producer handoff', () => {
+  it.each([
+    "checkpoint='{}'", 'last_tick=300000', 'lease_until=1200000',
+  ])('refuses to dispatch from an inconsistent GitHub ownership row (%s)', async assignment => {
+    const { db, env } = await setup();
+    db.sqlite.exec(`UPDATE monitor_runtime SET ${assignment}`);
+    const dispatch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(worker.scheduled({ scheduledTime: Date.now() }, env)).rejects.toThrow();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps checking for missed heartbeats while dispatches are drained', async () => {
+    const { db, env, send } = await setup();
+    db.sqlite.exec("UPDATE monitor_runtime SET mode='draining'");
+    db.sqlite.exec("INSERT INTO monitor_heartbeat(id,last_at) VALUES(1,'2026-11-01T00:00:00Z')");
+    const dispatch = vi.spyOn(globalThis, 'fetch');
+    await worker.scheduled({ scheduledTime: Date.now() }, env);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(send.mock.calls.map(([m]) => m.subject)).toEqual(['[ScoreArc] Monitor not running']);
+    expect((await worker.fetch(post(event()), env, ctx)).status).toBe(200);
+  });
+
+  it('sends and recovers a native incident, checkpoints its receipts, then exports only after draining', async () => {
+    const { db, env, send } = await setup();
+    const scopes = currentScopes(registry);
+    const start = Date.parse('2026-11-20T12:00:00Z');
+    const dir = await mkdtemp(join(tmpdir(), 'receiver-native-'));
+    dirs.push(dir);
+    const stateFile = join(dir, 'state.json');
+    const options = { enabled: true, deliveryEnabled: true, baseURL: 'https://scorearc-reader.fly.dev',
+      scopes, stateFile, run: { repository: 'mcasillas17/ScoreArc', workflow: '.github/workflows/match-freshness.yml',
+        ref: 'refs/heads/main', attempt: 1, number: 10, id: 100, sha: 'a'.repeat(40) }, now: start };
+    const healthy = { ok: true, count: 0, observation: { freshness: 'empty', poll: 'ok', stale: 0, overdue: 0, error: null } };
+    await monitor.prepareMonitor({ ...options, initialize: true, check: async () => healthy });
+    await monitor.deliverMonitor({ ...options, webhookURL: URL_OK, pendingArtifactId: 1 });
+    const seed = await readFile(stateFile, 'utf8');
+    db.sqlite.prepare("UPDATE monitor_runtime SET mode='cloudflare', checkpoint=?").run(seed);
+    const target = scopes[0];
+    let unavailable = true;
+    const reader = vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const url = new URL(String(input));
+      expect(url.origin).toBe('https://scorearc-reader.fly.dev');
+      if (unavailable && url.pathname.includes(`/${target.competition}/${target.season}/`)) return new Response(null, { status: 503 });
+      return new Response('[]', { headers: { 'Content-Type': 'application/json', 'X-ScoreArc-Freshness': 'empty',
+        'X-ScoreArc-Observed-At': new Date(start).toISOString(), 'X-ScoreArc-Poll-Status': 'ok',
+        'X-ScoreArc-Stale-Matches': '0', 'X-ScoreArc-Overdue-Matches': '0' } });
+    });
+    const getExport = (token = TOKEN) => worker.fetch(new Request(`http://localhost/checkpoint/${token}`, { method: 'POST' }), env, ctx);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    expect((await getExport()).status).toBe(409);
+    expect((await getExport('bad')).status).toBe(404);
+    expect((await worker.fetch(post(event()), env, ctx)).status).toBe(409);
+    expect((await worker.fetch(new Request(`http://localhost/heartbeat/${TOKEN}`, { method: 'POST' }), env, ctx)).status).toBe(409);
+    try {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      for (let i = 1; i <= 3; i++) {
+        vi.setSystemTime(start + 300_000 * i + 1000);
+        if (i === 3) unavailable = false;
+        await worker.scheduled({ scheduledTime: start + 300_000 * i }, env);
+        expect(db.sqlite.prepare('SELECT last_at FROM monitor_heartbeat').get()?.last_at).toBe(new Date().toISOString());
+      }
+    } finally { vi.useRealTimers(); }
+    expect(reader).toHaveBeenCalledTimes(scopes.length * 3);
+    expect(send.mock.calls.map(([m]) => m.subject)).toEqual([
+      `[ScoreArc] OPEN: ${target.competition} ${target.season}`, `[ScoreArc] RESOLVED: ${target.competition} ${target.season}`,
+    ]);
+    const ids = emailed(db).map(row => row.event_id);
+    expect(ids).toEqual([1, 2].map(seq => `${JSON.parse(seed).epoch}:${seq}`));
+    expect(send.mock.calls[1][0].text).toContain(`Incident: ${ids[0]}`);
+    db.sqlite.exec("UPDATE monitor_runtime SET mode='draining'");
+    expect((await worker.fetch(post(event()), env, ctx)).status).toBe(409);
+    const exported = await getExport();
+    expect(exported.headers.get('Cache-Control')).toBe('no-store');
+    expect(await exported.json()).toMatchObject({ epoch: JSON.parse(seed).epoch, sequence: 2, phase: 'final', pending: [], reserved: [],
+      delivered: ids.map(id => ({ id })), run: { worker: 'scorearc-alert-receiver' } });
+  });
+});
+
 // The real sender state machine against the real receiver: no acknowledgment shortcut.
 describe('real monitor sender against the receiver', () => {
   const scopes = [{ competition: 'liga-mx', season: '2026-apertura' }];
@@ -365,7 +447,7 @@ describe('real monitor sender against the receiver', () => {
 describe('monitor heartbeat', () => {
   const HEARTBEAT = `http://127.0.0.1/heartbeat/${TOKEN}`;
   const beat = (env: Env, url = HEARTBEAT) => worker.fetch(new Request(url, { method: 'POST' }), env, ctx);
-  const check = (env: Env) => worker.scheduled({}, env);
+  const check = (env: Env) => worker.scheduled({ scheduledTime: Date.now() }, env);
   const row = (db: Awaited<ReturnType<typeof database>>) => db.sqlite.prepare('SELECT last_at, alerted_at FROM monitor_heartbeat').all();
   const at = (iso: string) => vi.useFakeTimers({ now: Date.parse(iso), toFake: ['Date'] });
   // The cron also dispatches the workflow; no test reaches GitHub.
@@ -488,7 +570,7 @@ describe('monitor heartbeat', () => {
     const { db, send, env } = await setup();
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     at('2026-11-01T12:00:00Z'); await beat(env);
-    db.failing.statement = 'SELECT';
+    db.failing.statement = 'SELECT last_at';
     at('2026-11-01T14:00:00Z'); await check(env);
     expect(send).not.toHaveBeenCalled();
     expect(github).toHaveBeenCalledOnce(); // the dispatch is independent of the check

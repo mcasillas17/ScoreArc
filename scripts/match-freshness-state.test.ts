@@ -243,6 +243,14 @@ describe('trusted state selection', () => {
     responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 1, run_id: 99, run_attempt: 1, status: 'completed', conclusion: 'failure', steps: [{ name: 'Prepare pending state', status: 'completed', conclusion: 'skipped' }] }] };
     expect((await selectState({ github, run, now }))?.run.number).toBe(8);
   });
+  it('refuses older GitHub history after cancellation during a Cloudflare handoff', async () => {
+    const { github, responses } = api([prior(), prior(8)]); noArtifacts(responses);
+    responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 1, run_id: 99, status: 'completed', steps: [
+      { name: 'Fetch drained Cloudflare checkpoint', status: 'completed', conclusion: 'cancelled' },
+      { name: 'Prepare pending state', status: 'completed', conclusion: 'skipped' },
+    ] }] };
+    await expect(selectState({ github, run, now })).rejects.toThrow(/checkpoint.*rollback/i);
+  });
   // The concurrency group cancels a waiting run when a newer one queues. On GitHub such a run is
   // conclusion 'cancelled' with no jobs (seen on this repo's deploy runs, 2026-08-31), or with
   // jobs that never ran a step. It never prepared state, so it must not block selection.

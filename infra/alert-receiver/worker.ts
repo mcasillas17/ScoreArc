@@ -2,8 +2,10 @@
 // owner. Contract: docs/backend/MATCH_FRESHNESS.md#alert-receiver. HTTP 200 with
 // {"eventId"} means saved and emailed; anything else makes the sender retry the same id.
 // It also takes monitor-run heartbeats and, on a cron, emails when they stop
-// (docs/backend/MATCH_FRESHNESS.md#not-running-check). The same cron starts the
-// monitor workflow, because GitHub's own schedule starts it late or not at all.
+// (docs/backend/MATCH_FRESHNESS.md#not-running-check). D1 selects which producer
+// owns the five-minute check while the receiver keeps the same email receipts.
+import { WORKER_RUN_URL } from '../../scripts/match-freshness-checkpoint.mjs';
+import { getMonitorMode, runNativeTick } from './native-monitor.mjs';
 
 interface Statement {
   first<T>(): Promise<T | null>;
@@ -46,12 +48,13 @@ const countOrNull = (value: unknown) => value === null || (Number.isSafeInteger(
 const oneOfOrNull = (value: unknown, allowed: string[]) => value === null || (typeof value === 'string' && allowed.includes(value));
 
 // Everything that reaches the email is matched here, so it cannot carry headers or markup.
-function isEvent(value: unknown): value is Event {
+function isEvent(value: unknown, native = false): value is Event {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const e = value as Record<string, unknown>;
   return Object.keys(e).sort().join(' ') === KEYS && matches(eventId, e.eventId) && matches(eventId, e.incidentId) &&
     matches(slug, e.competition) && matches(slug, e.season) && (e.status === 'OPEN' || e.status === 'RESOLVED') &&
-    matches(instant, e.occurredAt) && matches(runUrl, e.runUrl) && countOrNull(e.count) && countOrNull(e.stale) && countOrNull(e.overdue) &&
+    matches(instant, e.occurredAt) && (matches(runUrl, e.runUrl) || (native && e.runUrl === WORKER_RUN_URL)) &&
+    countOrNull(e.count) && countOrNull(e.stale) && countOrNull(e.overdue) &&
     oneOfOrNull(e.freshness, ['fresh', 'empty', 'dormant', 'stale', 'unavailable']) && oneOfOrNull(e.poll, ['ok', 'partial', 'failed', 'unknown']) &&
     (e.error === null || matches(errorCategory, e.error));
 }
@@ -89,9 +92,9 @@ function message(event: Event, env: Env) {
 const mail = (env: Env, subject: string, text: string) => ({ to: env.ALERT_RECIPIENT, from: ALERT_SENDER, subject, text, html: `<pre>${text}</pre>` });
 
 function monitorMessage(down: boolean, at: string, env: Env) {
-  const text = down
-    ? `The match monitor has not completed a monitor run since ${at}.\n\nCheck the workflow: ${WORKFLOW_URL}`
-    : `The match monitor completed a monitor run again at ${at}.\n\nWorkflow: ${WORKFLOW_URL}`;
+  const state = down ? `The match monitor has not completed a monitor run since ${at}.`
+    : `The match monitor completed a monitor run again at ${at}.`;
+  const text = `${state}\n\nCloudflare receiver logs: ${WORKER_RUN_URL}\nGitHub workflow: ${WORKFLOW_URL}`;
   return mail(env, `[ScoreArc] Monitor ${down ? 'not running' : 'recovered'}`, text);
 }
 
@@ -165,9 +168,21 @@ async function handle(request: Request, env: Env) {
     return empty(500);
   }
   const path = new URL(request.url).pathname;
-  const route = ['/events/', '/heartbeat/'].find(prefix => path.startsWith(prefix));
+  const route = ['/events/', '/heartbeat/', '/checkpoint/'].find(prefix => path.startsWith(prefix));
   if (!route || !(await sameToken(path.slice(route.length), env.RECEIVER_TOKEN))) return empty(404);
   if (request.method !== 'POST') return rejected(405);
+  if (route === '/checkpoint/') {
+    // The GitHub rollback job independently validates the complete envelope.
+    const row = await env.DB.prepare(`SELECT checkpoint FROM monitor_runtime WHERE id=1
+      AND mode='draining' AND lease_until=0 AND json_extract(checkpoint,'$.run.worker')='scorearc-alert-receiver'
+      AND json_extract(checkpoint,'$.phase')='final' AND json_type(checkpoint,'$.monitorFailure')='null'
+      AND json_array_length(checkpoint,'$.pending')=0 AND json_array_length(checkpoint,'$.reserved')=0`).bind().first<{ checkpoint: string }>();
+    return row ? new Response(row.checkpoint, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }) : rejected(409);
+  }
+  // A delayed GitHub sender must not send or mask a missed native heartbeat.
+  const legacy = await env.DB.prepare("SELECT id FROM monitor_runtime WHERE id=1 AND mode IN ('github','draining') AND checkpoint IS NULL AND last_tick IS NULL AND lease_until=0")
+    .bind().first();
+  if (!legacy) return rejected(409);
   if (route === '/heartbeat/') return heartbeat(env);
   if (!/^application\/json(\s*;|$)/i.test(request.headers.get('content-type') ?? '')) return rejected(415);
   const raw = await boundedText(request);
@@ -175,9 +190,11 @@ async function handle(request: Request, env: Env) {
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return rejected(400); }
   if (!isEvent(parsed) || request.headers.get('idempotency-key') !== parsed.eventId) return rejected(400);
+  return acceptEvent(parsed, env);
+}
 
+async function acceptEvent(event: Event, env: Env) {
   // Field order is fixed so that an identical event always compares equal on retry.
-  const event = parsed;
   const payload = JSON.stringify(KEYS.split(' ').map(key => event[key as keyof Event]));
   const select = () => env.DB.prepare('SELECT payload, emailed_at FROM alert_event WHERE event_id = ?').bind(event.eventId).first<{ payload: string; emailed_at: string | null }>();
   let stored = await select();
@@ -207,6 +224,27 @@ async function handle(request: Request, env: Env) {
   return new Response(JSON.stringify({ eventId: event.eventId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }
 
+async function runMonitor(scheduledTime: number, env: Env) {
+  const mode = await getMonitorMode(env.DB);
+  if (mode === 'github') return dispatchMonitor(env).catch(error => logFailure('dispatch', error));
+  if (mode === 'draining') return;
+  if (!env.ALERT_RECIPIENT) throw new Error('Missing alert recipient');
+  const result = await runNativeTick({
+    db: env.DB, scheduledTime,
+    send: async (notification: unknown) => {
+      if (!isEvent(notification, true)) throw new Error('Invalid native notification');
+      const response = await acceptEvent(notification, env);
+      if (response.status !== 200 || (await response.json() as { eventId: string }).eventId !== notification.eventId) {
+        throw new Error('Unacknowledged native event');
+      }
+    },
+    heartbeat: async () => {
+      if ((await heartbeat(env)).status !== 204) throw new Error('Unacknowledged native heartbeat');
+    },
+  });
+  console.log('match-freshness', result);
+}
+
 const worker = {
   async fetch(request: Request, env: Env, ctx: { waitUntil(work: Promise<unknown>): void }) {
     // The sender gives up after 15 seconds. Without waitUntil that disconnect could cancel
@@ -219,9 +257,12 @@ const worker = {
     return work;
   },
   // Cron trigger in wrangler.jsonc. A failure here is retried by the next run.
-  async scheduled(_controller: unknown, env: Env) {
+  async scheduled(controller: { scheduledTime: number }, env: Env) {
     await Promise.all([
-      dispatchMonitor(env).catch(error => logFailure('dispatch', error)),
+      runMonitor(controller.scheduledTime, env).catch(error => {
+        logFailure('monitor', error);
+        throw new Error('Match monitor execution failed');
+      }),
       checkHeartbeat(env).catch(error => logFailure('heartbeat check', error)),
     ]);
   },
