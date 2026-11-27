@@ -79,6 +79,7 @@ paths:
         "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/matches:
     get:
@@ -157,9 +158,11 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Match" } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/calendar:
     get:
@@ -190,6 +193,7 @@ paths:
         "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/standings:
     get:
@@ -217,6 +221,7 @@ paths:
         "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/bracket:
     get:
@@ -247,6 +252,7 @@ paths:
         "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/leaders:
     get:
@@ -278,6 +284,7 @@ paths:
         "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/top-scorers:
     get:
@@ -299,6 +306,7 @@ paths:
         "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/teams:
     get:
@@ -332,6 +340,7 @@ paths:
         "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/teams/{teamId}:
     get:
@@ -366,6 +375,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/teams/{teamId}/squad:
     get:
@@ -400,6 +410,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/players/{playerId}:
     get:
@@ -476,6 +487,7 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/UpstreamError" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/matches/{id}/box-score:
     get:
@@ -502,6 +514,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/matches/{id}:
     get:
@@ -526,6 +539,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceBusy" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
 components:
   parameters:
@@ -700,6 +714,23 @@ components:
       description: ESPN news request failed
       headers:
         Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Trusted caller credential required for this scope
+      headers:
+        Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ServiceBusy:
+      description: Reader concurrency limit exceeded; retry shortly
+      headers:
+        Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+        Retry-After:
+          description: Seconds before retrying.
+          schema: { type: string, example: "1" }
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

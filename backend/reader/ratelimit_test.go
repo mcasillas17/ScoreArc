@@ -86,3 +86,55 @@ func TestIPRateLimiterBoundsUniqueClients(t *testing.T) {
 		t.Fatal("least-recently-used client was not evicted")
 	}
 }
+
+func TestIPRateLimiterBucketsIPv6BySlash64AndUnmapsIPv4(t *testing.T) {
+	t.Parallel()
+	limiter := newIPRateLimiter(0, 2)
+
+	if !limiter.Allow("2001:db8:1:2::1") || !limiter.Allow("2001:db8:1:2::abcd") {
+		t.Fatal("requests within the same /64 burst were not allowed")
+	}
+	if limiter.Allow("2001:db8:1:2::9999") {
+		t.Fatal("third request from same IPv6 /64 bypassed shared bucket")
+	}
+	if len(limiter.clients) != 1 {
+		t.Fatalf("clients = %d, want 1 bucket for the /64 prefix", len(limiter.clients))
+	}
+
+	// Separate /64 gets its own bucket.
+	if !limiter.Allow("2001:db8:1:3::1") {
+		t.Fatal("separate /64 was unexpectedly limited")
+	}
+	if len(limiter.clients) != 2 {
+		t.Fatalf("clients = %d, want 2 buckets across distinct /64 prefixes", len(limiter.clients))
+	}
+
+	// IPv4-mapped IPv6 shares the IPv4 bucket.
+	v4Limiter := newIPRateLimiter(0, 1)
+	if !v4Limiter.Allow("192.0.2.10") {
+		t.Fatal("first IPv4 request failed")
+	}
+	if v4Limiter.Allow("::ffff:192.0.2.10") {
+		t.Fatal("IPv4-mapped IPv6 bypassed the IPv4 bucket")
+	}
+	if len(v4Limiter.clients) != 1 {
+		t.Fatalf("clients = %d, want 1", len(v4Limiter.clients))
+	}
+}
+
+func TestIPRateLimiterGlobalCeilingDoesNotChurnLRU(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC)
+	limiter := newIPRateLimiterWithGlobal(5, 5, 1, 2)
+	limiter.now = func() time.Time { return now }
+
+	if !limiter.Allow("192.0.2.1") || !limiter.Allow("192.0.2.2") {
+		t.Fatal("initial global burst failed")
+	}
+	if limiter.Allow("192.0.2.3") {
+		t.Fatal("third distinct IP bypassed global burst")
+	}
+	if len(limiter.clients) != 2 {
+		t.Fatalf("clients = %d, want 2 (global denial must not insert into LRU)", len(limiter.clients))
+	}
+}

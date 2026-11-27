@@ -27,6 +27,11 @@ primary_region = "iad"   # MUST match the Neon region (see SETUP §4/§7)
   min_machines_running = 1
   processes = ["app"]
 
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 100
+    soft_limit = 60
+
   [[http_service.checks]]
     interval = "15s"
     timeout = "2s"

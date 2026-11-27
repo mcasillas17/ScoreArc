@@ -31,6 +31,7 @@ export interface RequestBudget {
 /** One shared budget includes queued reads, response streaming and fallback. */
 export function createRequestBudget(options: {
   dependency?: 'espn' | 'reader';
+  readerApiKey?: string;
   onFailure?: (error: unknown) => void;
   fetch?: typeof fetch; signal: AbortSignal; maxConcurrent?: number; maxCalls?: number; maxResponseBytes?: number; maxBytes?: number;
 }): RequestBudget {
@@ -80,6 +81,9 @@ export function createRequestBudget(options: {
         const observeRedirects = Boolean(finish && healthContext().onHttp);
         try {
           const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': 'scorearc' };
+          if (dependency === 'reader' && options.readerApiKey) {
+            headers['X-ScoreArc-Client-Key'] = options.readerApiKey;
+          }
           if (dependency === 'reader' && /\/(?:teams\/[^/]+(?:\/squad)?|players\/[^/]+)$/.test(new URL(url).pathname)) {
             headers['X-ScoreArc-Roster-Stats'] = 'retained-v1';
           }

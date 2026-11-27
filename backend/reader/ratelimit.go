@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -11,15 +12,21 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// ponytail: one per-IP bucket for every caller, sized so the website's own
-// server-side reads are never throttled into ESPN fallback: a cold home page
-// is ~36 reader calls, 4 at a time, from a few shared Vercel egress IPs
-// (docs/backend/READER_DATASTORE.md). Ceiling: several cold renders at once
-// from one IP. If fallback telemetry shows 429s, give the website a
-// trusted-caller key rather than raising these again.
+// ponytail: separate trusted-caller and anonymous-client limits so the website
+// and watchdog keep high headroom via READER_TRUSTED_KEY while public callers
+// stay bounded (and IPv6 /64 prefixes share one bucket). When READER_TRUSTED_KEY
+// is unset, anonymous callers keep the transition limit so existing deploys do
+// not break before secrets are provisioned.
 const (
-	clientRequestsPerSecond = 50
-	clientBurst             = 200
+	trustedRequestsPerSecond  = 50
+	trustedBurst              = 200
+	publicRequestsPerSecond   = 5
+	publicBurst               = 15
+	clientRequestsPerSecond   = 50
+	clientBurst               = 200
+	globalAnonymousRPS        = 200
+	globalAnonymousBurst      = 400
+	trustedCallerHeader       = "X-ScoreArc-Client-Key"
 )
 
 type clientLimiter struct {
@@ -35,6 +42,7 @@ type ipRateLimiter struct {
 	clients    map[string]*clientLimiter
 	rps        rate.Limit
 	burst      int
+	global     *rate.Limiter
 	maxClients int
 	lru        *list.List
 	now        func() time.Time
@@ -52,11 +60,35 @@ func newIPRateLimiter(requestsPerSecond float64, burst int) *ipRateLimiter {
 	}
 }
 
+func newIPRateLimiterWithGlobal(requestsPerSecond float64, burst int, globalRPS float64, globalBurst int) *ipRateLimiter {
+	limiter := newIPRateLimiter(requestsPerSecond, burst)
+	limiter.global = rate.NewLimiter(rate.Limit(globalRPS), globalBurst)
+	return limiter
+}
+
+// rateLimitKey groups IPv6 clients by /64 prefix and unmaps IPv4-mapped IPv6
+// addresses so a single /64 allocation cannot multiply buckets or churn the LRU.
+func rateLimitKey(ip string) string {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	addr = addr.Unmap()
+	if addr.Is4() {
+		return addr.String()
+	}
+	return netip.PrefixFrom(addr, 64).Masked().String()
+}
+
 func (l *ipRateLimiter) Allow(ip string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	now := l.now()
+	if l.global != nil && !l.global.AllowN(now, 1) {
+		return false
+	}
+
 	if l.lastSweep.IsZero() || now.Sub(l.lastSweep) >= time.Minute {
 		for key, client := range l.clients {
 			if now.Sub(client.lastSeen) > 3*time.Minute {
@@ -67,7 +99,8 @@ func (l *ipRateLimiter) Allow(ip string) bool {
 		l.lastSweep = now
 	}
 
-	client, exists := l.clients[ip]
+	key := rateLimitKey(ip)
+	client, exists := l.clients[key]
 	if !exists {
 		if len(l.clients) >= l.maxClients {
 			oldest := l.lru.Front()
@@ -76,9 +109,9 @@ func (l *ipRateLimiter) Allow(ip string) bool {
 				l.lru.Remove(oldest)
 			}
 		}
-		element := l.lru.PushBack(ip)
+		element := l.lru.PushBack(key)
 		client = &clientLimiter{limiter: rate.NewLimiter(l.rps, l.burst), element: element}
-		l.clients[ip] = client
+		l.clients[key] = client
 	} else {
 		l.lru.MoveToBack(client.element)
 	}

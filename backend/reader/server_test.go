@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"io"
@@ -594,5 +595,142 @@ func TestEditionEligibility(t *testing.T) {
 	res := performRequest(a.router(), "GET", "/v1/competitions/world-cup/2026/standings")
 	if res.Header().Get(resourcesHeader) == "" || !strings.Contains(res.Header().Get(resourcesHeader), "unavailable") {
 		t.Fatalf("unsupported standings %d %s", res.Code, res.Header())
+	}
+}
+
+func TestSecurityHeadersAndLogPathTruncation(t *testing.T) {
+	t.Parallel()
+	app, buf := newObservedApp(t, &fakeReaderStore{})
+	longPath := "/" + strings.Repeat("a", 300)
+	res := performRequest(app.router(), http.MethodGet, longPath)
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", res.Code)
+	}
+	if res.Header().Get("X-Content-Type-Options") != "nosniff" ||
+		res.Header().Get("X-Frame-Options") != "DENY" ||
+		res.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("missing security headers: %v", res.Header())
+	}
+	if strings.Contains(buf.String(), strings.Repeat("a", 260)) {
+		t.Fatalf("untruncated long path was logged: %s", buf.String())
+	}
+}
+
+func TestTrustedCallerRateLimitAndSeasonScopeGate(t *testing.T) {
+	t.Parallel()
+	const key = "trusted-secret-key-at-least-32-chars"
+	sum := sha256.Sum256([]byte(key))
+	store := &fakeReaderStore{matches: []Match{}}
+	app := newTestApp(t, store, &fakeNewsReader{})
+	app.trustedKeyHash = sum[:]
+	app.requireTrustedSeason = true
+	app.limiter = newIPRateLimiter(0, 1)
+	app.trustedLimiter = newIPRateLimiter(0, 5)
+	router := app.router()
+
+	// Anonymous scope=season is rejected with 403 before querying the store.
+	anonSeason := performRequest(router, http.MethodGet, "/v1/competitions/world-cup/2026/matches?scope=season&detail=summary")
+	if anonSeason.Code != http.StatusForbidden || store.calls != 0 || anonSeason.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("anon season = %d calls=%d cache=%q", anonSeason.Code, store.calls, anonSeason.Header().Get("Cache-Control"))
+	}
+
+	// Second anonymous request from the same IP hits the tightened anonymous limiter (burst 1) and keeps CORS headers.
+	anonLimited := performRequest(router, http.MethodGet, "/v1/competitions/world-cup/2026/matches")
+	if anonLimited.Code != http.StatusTooManyRequests || anonLimited.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("anon limited = %d headers=%v", anonLimited.Code, anonLimited.Header())
+	}
+
+	// Wrong key still falls in the anonymous bucket and is rejected for scope=season.
+	wrongKeyReq := httptest.NewRequest(http.MethodGet, "/v1/competitions/world-cup/2026/matches?scope=season", nil)
+	wrongKeyReq.RemoteAddr = "192.0.2.50:1234"
+	wrongKeyReq.Header.Set(trustedCallerHeader, "wrong-key")
+	wrongKeyRec := httptest.NewRecorder()
+	router.ServeHTTP(wrongKeyRec, wrongKeyReq)
+	if wrongKeyRec.Code != http.StatusForbidden {
+		t.Fatalf("wrong key season = %d, want 403", wrongKeyRec.Code)
+	}
+
+	// Trusted key uses trustedLimiter and can read scope=season with private, no-store cache header.
+	trustedReq := httptest.NewRequest(http.MethodGet, "/v1/competitions/world-cup/2026/matches?scope=season&detail=summary", nil)
+	trustedReq.RemoteAddr = "192.0.2.1:1234"
+	trustedReq.Header.Set(trustedCallerHeader, key)
+	trustedRec := httptest.NewRecorder()
+	router.ServeHTTP(trustedRec, trustedReq)
+	if trustedRec.Code != http.StatusOK || trustedRec.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("trusted season = %d cache=%q body=%s", trustedRec.Code, trustedRec.Header().Get("Cache-Control"), trustedRec.Body.String())
+	}
+}
+
+func TestCORSAllowlistNoneAndPreflightRateLimit(t *testing.T) {
+	t.Parallel()
+	store := &fakeReaderStore{matches: []Match{}}
+
+	// Allowlist mode.
+	app := newTestApp(t, store, &fakeNewsReader{})
+	app.corsOrigins = []string{"https://www.scorearc.futbol"}
+	router := app.router()
+
+	allowedPreflight := httptest.NewRequest(http.MethodOptions, "/v1/competitions/world-cup/2026/matches", nil)
+	allowedPreflight.RemoteAddr = "192.0.2.10:1234"
+	allowedPreflight.Header.Set("Origin", "https://www.scorearc.futbol")
+	allowedPreflight.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	allowedRec := httptest.NewRecorder()
+	router.ServeHTTP(allowedRec, allowedPreflight)
+	if allowedRec.Code != http.StatusOK || allowedRec.Header().Get("Access-Control-Allow-Origin") != "https://www.scorearc.futbol" || allowedRec.Header().Get("Vary") != "Origin" {
+		t.Fatalf("allowed preflight = %d headers=%v", allowedRec.Code, allowedRec.Header())
+	}
+
+	disallowedPreflight := httptest.NewRequest(http.MethodOptions, "/v1/competitions/world-cup/2026/matches", nil)
+	disallowedPreflight.RemoteAddr = "192.0.2.11:1234"
+	disallowedPreflight.Header.Set("Origin", "https://evil.example")
+	disallowedPreflight.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	disallowedRec := httptest.NewRecorder()
+	router.ServeHTTP(disallowedRec, disallowedPreflight)
+	if disallowedRec.Code != http.StatusForbidden || disallowedRec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("disallowed preflight = %d headers=%v", disallowedRec.Code, disallowedRec.Header())
+	}
+
+	// "none" mode omits Access-Control-Allow-Origin.
+	noneApp := newTestApp(t, store, &fakeNewsReader{})
+	noneApp.corsOrigins = []string{}
+	noneGet := httptest.NewRequest(http.MethodGet, "/v1/competitions/world-cup/2026/matches", nil)
+	noneGet.RemoteAddr = "192.0.2.12:1234"
+	noneGet.Header.Set("Origin", "https://www.scorearc.futbol")
+	noneRec := httptest.NewRecorder()
+	noneApp.router().ServeHTTP(noneRec, noneGet)
+	if noneRec.Code != http.StatusOK || noneRec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("none CORS = %d headers=%v", noneRec.Code, noneRec.Header())
+	}
+
+	// OPTIONS preflights are rate-limited.
+	limitedApp := newTestApp(t, store, &fakeNewsReader{})
+	limitedApp.limiter = newIPRateLimiter(0, 1)
+	limitedRouter := limitedApp.router()
+	for i := range 2 {
+		req := httptest.NewRequest(http.MethodOptions, "/v1/competitions/world-cup/2026/matches", nil)
+		req.RemoteAddr = "192.0.2.13:1234"
+		req.Header.Set("Origin", "https://scorearc.futbol")
+		req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+		rec := httptest.NewRecorder()
+		limitedRouter.ServeHTTP(rec, req)
+		if i == 0 && rec.Code != http.StatusOK {
+			t.Fatalf("first preflight = %d", rec.Code)
+		}
+		if i == 1 && rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("second preflight = %d, want 429", rec.Code)
+		}
+	}
+}
+
+func TestLimitConcurrencyReturns503WhenBusy(t *testing.T) {
+	t.Parallel()
+	app := newTestApp(t, &fakeReaderStore{matches: []Match{}}, &fakeNewsReader{})
+	app.inFlight = make(chan struct{}, 1)
+	app.inFlight <- struct{}{} // occupy the sole slot
+	defer func() { <-app.inFlight }()
+
+	res := performRequest(app.router(), http.MethodGet, "/v1/competitions/world-cup/2026/matches")
+	if res.Code != http.StatusServiceUnavailable || res.Header().Get("Retry-After") != "1" || res.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("busy response = %d headers=%v body=%s", res.Code, res.Header(), res.Body.String())
 	}
 }

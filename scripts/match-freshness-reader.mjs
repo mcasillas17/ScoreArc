@@ -111,7 +111,7 @@ export async function boundedJSON(response, maxBytes) {
   }
 }
 
-export async function checkScope({ baseURL, competition, season, timeoutMs = 10000, maxBytes = MAX_BYTES, clock = Date.now }) {
+export async function checkScope({ baseURL, competition, season, timeoutMs = 10000, maxBytes = MAX_BYTES, clock = Date.now, apiKey = process.env.SCOREARC_READER_API_KEY }) {
   const key = scopeKey({ competition, season });
   const base = origin(baseURL);
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS ||
@@ -126,9 +126,13 @@ export async function checkScope({ baseURL, competition, season, timeoutMs = 100
     // lightweight week, which would hide overdue matches outside it and skip
     // the detail checks below. Readers predating T10.1 ignore both parameters
     // and already return the whole season with detail.
+    const headers = { Accept: 'application/json', 'Cache-Control': 'no-cache, no-store' };
+    if (typeof apiKey === 'string' && apiKey.length > 0 && !/\s/.test(apiKey)) {
+      headers['X-ScoreArc-Client-Key'] = apiKey;
+    }
     const response = await fetch(`${base}/v1/competitions/${competition}/${season}/matches?scope=season&detail=summary`, {
       signal: controller.signal, redirect: 'manual', cache: 'no-store',
-      headers: { Accept: 'application/json', 'Cache-Control': 'no-cache, no-store' },
+      headers,
     });
     // Both runtimes return redirects without following them. Keep the Node watchdog's error category.
     if ([301, 302, 303, 307, 308].includes(response.status) && response.headers.has('Location')) throw new Error('request');
