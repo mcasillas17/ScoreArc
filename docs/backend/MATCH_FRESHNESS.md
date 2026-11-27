@@ -1071,6 +1071,16 @@ The receiver's `monitor_runtime.mode` selects the producer. In `github` mode its
 
 Rehearse against a reader with `READER_TRUSTED_KEY` set and `READER_REQUIRE_TRUSTED_SEASON_SCOPE=true`: the website and both watchdog paths must read a full season, an anonymous request must get `403`, and logs and checkpoints must not contain the key. Only then enable the production reader gate as a separate change. If a caller gets `403` after activation, turn off the gate before rolling back caller credentials or the monitoring image; leave checkpoint ownership unchanged.
 
+**Check the GitHub backup reader key while Fly is in charge.** After the workflow is merged, dispatch it on `main` with no inputs. Leave `match-freshness.yml` disabled:
+
+```sh
+gh workflow run match-freshness-observe.yml --repo mcasillas17/ScoreArc --ref main
+```
+
+In **Actions → Match freshness reader check → Observe monitored seasons**, look for the JSON result with `status: "observe"`. A pass means `scopes` equals the number of monitored seasons for that revision (currently 15) and `errors` is zero. `open` counts seasons that would raise a data alert; it does not fail the reader check. A missing or malformed key fails before any reads. A reader error fails the job; a skipped job is not evidence.
+
+The probe sends the configured key with each season read. While the reader still permits anonymous season reads, success does not prove it recognized that key as trusted. The probe never contacts the receiver, sends alerts or heartbeats, writes checkpoints, or transfers ownership.
+
 **Capacity evidence, November 26, 2026.** The packaged Node 26.13.1 runner's read-only probe on the existing shared-CPU, 2 GB Fly machine checked all 15 seasons in 1.064 seconds, consumed 537 ms of CPU and peaked at 116 MiB RSS. There were zero open incidents and zero reader errors. In two isolated hosted Workers Free rehearsals, the receiver processed ten authenticated requests at 1–4 ms of CPU each. Both saved the final sequence 88, retained 32 receipts and advanced the heartbeat. Those quiet rehearsals used healthy sample observations and exercised no real email sends.
 
 **Preflight and staging.** Use Node 26, Wrangler 4.123.0, GitHub CLI, unzip, Fly CLI and a local Docker builder. From the repo root on merged code, run:

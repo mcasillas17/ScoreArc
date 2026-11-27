@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_SENDS } from './match-freshness-checkpoint.mjs';
 import { readFile } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 const yaml = createRequire(import.meta.url)('js-yaml');
 // The catalog can grow independently of the alert delivery budget.
 const registry: { id: string; name: string; currentSeasonId: string; seasons: Record<string, { monitored: boolean }> }[] =
@@ -12,7 +13,7 @@ const SCOPES = registry.flatMap(c => Object.values(c.seasons)).filter(s => s?.mo
 it('sends every scope\'s alert in one run', () => {
   expect(MAX_SENDS).toBeGreaterThanOrEqual(SCOPES);
 });
-const document = () => readFile('.github/workflows/match-freshness.yml', 'utf8').then(s => yaml.load(s));
+const document = (name = 'match-freshness.yml') => readFile(`.github/workflows/${name}`, 'utf8').then(s => yaml.load(s));
 describe('opt-in durable match workflow', () => {
   it('gates the whole job before checks, downloads, secrets and delivery', async () => {
     const workflow = await document();
@@ -93,6 +94,75 @@ afterEach(async () => {
   for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); }
   for (const path of dirs.splice(0)) await rm(path, { recursive: true, force: true });
 });
+
+describe('manual backup reader check', () => {
+  type Action = { uses: string; with: Record<string, unknown> };
+  type Probe = { run: string; env: Record<string, string>; if?: string; 'continue-on-error'?: boolean };
+  type Job = { if: string; permissions?: unknown; 'continue-on-error'?: boolean; steps: [{ run: string }, Action, Action, Probe] };
+  const workflow = (): Promise<{ on: unknown; permissions: unknown; jobs: { observe: Job } }> =>
+    document('match-freshness-observe.yml');
+
+  it('only admits main dispatches and binds the sole secret after checkout and setup', async () => {
+    const doc = await workflow();
+    expect(doc.on).toEqual({ workflow_dispatch: null });
+    expect(doc.permissions).toEqual({ contents: 'read' });
+    expect(Object.keys(doc.jobs)).toEqual(['observe']);
+    const job = doc.jobs.observe;
+    expect(job.permissions).toBeUndefined();
+    expect(job['continue-on-error']).toBeUndefined();
+    expect(job.if).toBe("${{ github.ref == 'refs/heads/main' }}");
+    const [guard, checkout, setup, probe] = job.steps;
+    expect(job.steps).toHaveLength(4);
+    for (const ref of ['refs/heads/main', 'refs/heads/Main', 'refs/tags/main']) {
+      expect(spawnSync('/bin/bash', ['-e', '-c', guard.run], { env: { NODE_ENV: 'test', GITHUB_REF: ref } }).status)
+        .toBe(ref === 'refs/heads/main' ? 0 : 1);
+    }
+    expect(checkout.uses).toMatch(/^actions\/checkout@[a-f0-9]{40}$/);
+    expect(checkout.with).toEqual({ 'persist-credentials': false });
+    expect(setup.uses).toMatch(/^actions\/setup-node@[a-f0-9]{40}$/);
+    expect(setup.with['node-version']).toBe('26');
+    expect(probe.if).toBeUndefined();
+    expect(probe['continue-on-error']).toBeUndefined();
+    expect(probe.env).toEqual({ SCOREARC_READER_API_KEY: '${{ secrets.SCOREARC_READER_API_KEY }}' });
+    expect(JSON.stringify(doc).match(/\bsecrets\b/g)).toHaveLength(1);
+  });
+
+  it('fails closed without a usable key and propagates reader errors, not data alerts', async () => {
+    const probe = (await workflow()).jobs.observe.steps[3];
+    const dir = await mkdtemp(join(tmpdir(), 'watchdog-observe-'));
+    dirs.push(dir);
+    const preload = join(dir, 'reader.mjs');
+    // Exercise the real workflow shell and CLI. Only the reader transport is replaced.
+    await writeFile(preload, `
+      let reads = 0;
+      globalThis.fetch = async (url, { headers }) => {
+        if (new URL(url).origin !== 'https://scorearc-reader.fly.dev' ||
+            headers['X-ScoreArc-Client-Key'] !== process.env.TEST_READER_KEY ||
+            (++reads === 1 && process.env.REJECT_ONE === 'yes')) return new Response(null, { status: 403 });
+        return Response.json([], { headers: { 'X-ScoreArc-Freshness': 'unavailable', 'X-ScoreArc-Poll-Status': 'failed',
+          'X-ScoreArc-Stale-Matches': '0', 'X-ScoreArc-Overdue-Matches': '0' } });
+      };`);
+    const key = randomUUID();
+    const run = (apiKey: string | undefined, rejectOne = false) => spawnSync('/bin/bash', ['-e', '-c', probe.run], {
+      encoding: 'utf8', timeout: 5000, env: { NODE_ENV: 'test', PATH: process.env.PATH, NODE_OPTIONS: `--import=${pathToFileURL(preload)}`,
+        SCOREARC_READER_API_KEY: apiKey, TEST_READER_KEY: key, REJECT_ONE: rejectOne ? 'yes' : 'no' },
+    });
+    for (const invalid of [undefined, '', 'short', `${key}\n`]) {
+      const { status, stdout, stderr } = run(invalid);
+      expect(status).toBe(1);
+      expect(stderr).toContain('SCOREARC_READER_API_KEY');
+      expect(stdout).toBe('');
+      expect(stderr).not.toContain(key);
+    }
+    for (const rejectOne of [false, true]) {
+      const { status, stdout, stderr } = run(key, rejectOne);
+      expect(status).toBe(rejectOne ? 2 : 0);
+      expect(JSON.parse(stdout)).toMatchObject({ status: 'observe', scopes: SCOPES, open: SCOPES, errors: rejectOne ? 1 : 0 });
+      expect(stdout + stderr).not.toContain(key);
+    }
+  });
+});
+
 async function local(handler: RequestListener) {
   const server = createServer(handler); servers.push(server); await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
   const address = server.address(); if (!address || typeof address === 'string') throw new Error('address');
