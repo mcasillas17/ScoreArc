@@ -2,7 +2,7 @@ import { observeApiRoute } from '@/lib/telemetry/inbound';
 import { loadMatchSummaryWithSlugs } from '@/server/data/playerIndex';
 import { resolveResource } from '@/server/data/editionResources';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
-import { apiError } from '@/app/api/errorResponse';
+import { apiCacheControl, apiError } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +25,7 @@ export const GET = observeApiRoute('match-summary', async (req: Request, { param
     // issue is letters, digits and hyphens; anything else is not ours.
     if (!REFERENCE.test(id) || !SIDE.test(home) || !SIDE.test(away)) return apiError('INVALID_REQUEST', 400);
     const linked = await loadMatchSummaryWithSlugs(rc, id, home, away, undefined, req.signal);
-    return Response.json(linked, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+    return Response.json(linked, { headers: { 'Cache-Control': apiCacheControl(rc, 'live') } });
   } catch {
     await trackAPIRequestFailure('match-summary', 502, comp, season);
     return apiError('UPSTREAM_UNAVAILABLE', 502);

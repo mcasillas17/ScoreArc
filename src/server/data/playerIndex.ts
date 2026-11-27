@@ -1,7 +1,7 @@
 import { supportsResource, type CompetitionSeason } from './competitions';
 import type { MatchSummaryData, PlayerProfile, SquadPlayer, Team } from './types';
 import { dataStore, type DataStore } from './store';
-import { buildSlugMap, type ResolvedPlayer, type SlugEntry } from './playerIdentity';
+import { buildSlugMap, isValidPlayerSlug, type ResolvedPlayer, type SlugEntry } from './playerIdentity';
 import { ReaderFailure } from './readerTransport';
 import { isSampledComparisonStore } from './readerComparison';
 import { isReaderOperationStore, runDataOperation } from './sourceSelection';
@@ -36,6 +36,7 @@ export function loadPlayerBySlug(
   store: DataStore = dataStore,
   signal?: AbortSignal,
 ): Promise<PlayerProfile | null> {
+  if (!isValidPlayerSlug(slug)) return Promise.resolve(null);
   return runDataOperation(store, async (source) => {
     // A missing squad cannot invalidate a player found on a verified roster. If
     // the slug is absent, an unavailable squad could still contain that player.

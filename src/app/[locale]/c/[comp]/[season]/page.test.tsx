@@ -162,11 +162,12 @@ describe('competition bracket metadata', () => {
     expect(metadata).toMatchObject({
       title,
       description,
+      robots: { index: false, follow: true },
       alternates: {
-        canonical: `/${locale}/c/world-cup/2026?c=MEX&name=M%C3%A9xico`,
+        canonical: `/${locale}/c/world-cup/2026`,
         languages: {
-          en: '/en/c/world-cup/2026?c=MEX&name=M%C3%A9xico',
-          es: '/es/c/world-cup/2026?c=MEX&name=M%C3%A9xico',
+          en: '/en/c/world-cup/2026',
+          es: '/es/c/world-cup/2026',
         },
       },
       openGraph: {
@@ -185,5 +186,26 @@ describe('competition bracket metadata', () => {
         images: [`/api/og?champ=MEX&name=M%C3%A9xico&compId=world-cup&comp=Men%27s+World+Cup+2026&locale=${locale}&v=${OG_VERSION}`],
       },
     });
+  });
+
+  it('ignores malformed ?c= phishing values and truncates oversized ?name= values', async () => {
+    const poisoned = await generateMetadata({
+      params: { locale: 'en', comp: 'world-cup', season: '2026' },
+      searchParams: { c: 'CLAIM FREE PRIZE', name: 'Ignored' },
+    });
+    expect(poisoned.title).toBe("ScoreArc · Men's World Cup 2026");
+    expect(poisoned.robots).toBeUndefined();
+    expect(poisoned.alternates).toEqual({
+      canonical: '/en/c/world-cup/2026',
+      languages: { en: '/en/c/world-cup/2026', es: '/es/c/world-cup/2026' },
+    });
+
+    const longName = 'A'.repeat(60);
+    const truncated = await generateMetadata({
+      params: { locale: 'en', comp: 'world-cup', season: '2026' },
+      searchParams: { c: 'MEX', name: longName },
+    });
+    expect(truncated.title).toContain('A'.repeat(40));
+    expect(truncated.title).not.toContain('A'.repeat(41));
   });
 });

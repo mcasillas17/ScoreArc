@@ -37,16 +37,19 @@ export async function generateMetadata({ params, searchParams }: { params: Seaso
   if (!rc) return {};
   const t = getTranslator(locale, comp);
   const label = `${rc.competition.shortName} ${rc.season.label}`;
-  const champ = firstSearchParam(query.c);
-  const name = firstSearchParam(query.name) ?? champ;
-  // Echoed into canonical/hreflang, so it is validated, not trusted: an
-  // attacker-crafted ?crest= must not land in our own canonical tag.
+  const rawChamp = firstSearchParam(query.c)?.trim();
+  const champ = rawChamp && /^[A-Za-z0-9-]{2,8}$/.test(rawChamp) ? rawChamp : undefined;
+  const rawName = firstSearchParam(query.name)
+    ?.replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+  const name = rawName || champ;
+  // Echoed into OG card, so crest is host-validated. Canonical/hreflang always
+  // stay on the clean edition URL so arbitrary share params cannot poison SEO.
   const crest = safeCrest(firstSearchParam(query.crest));
-  const predictionQuery = champ
-    ? `?${new URLSearchParams({ c: champ, name: name ?? champ, ...(crest && { crest }) })}`
-    : '';
   const localizedPath = (pathLocale: 'en' | 'es') =>
-    `/${pathLocale}/c/${rc.competition.id}/${rc.season.id}${predictionQuery}`;
+    `/${pathLocale}/c/${rc.competition.id}/${rc.season.id}`;
   const alternates = {
     canonical: localizedPath(locale),
     languages: { en: localizedPath('en'), es: localizedPath('es') },
@@ -71,6 +74,7 @@ export async function generateMetadata({ params, searchParams }: { params: Seaso
   return {
     title,
     description,
+    robots: { index: false, follow: true },
     alternates,
     ...shareMetadata(title, description, og),
   };

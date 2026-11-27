@@ -122,18 +122,22 @@ describe('API request health', () => {
     ]);
   });
 
-  it('observes OG assets in monitoring-only mode while preserving the existing native redirect policy', async () => {
+  it('always checks OG asset redirects manually and blocks unapproved redirect hosts in ESPN mode', async () => {
     vi.stubEnv('SCOREARC_HTTP_TELEMETRY', '1');
     vi.stubEnv('SCOREARC_DATA_SOURCE', 'espn');
     const policies: RequestRedirect[] = [];
-    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
       policies.push(init.redirect!);
+      if (url.includes('private-crest')) {
+        return new Response(null, { status: 302, headers: { location: 'https://evil.example/hostile.png' } });
+      }
       return new Response(null, { status: 404 });
     });
     const { GET } = await import('./og/route');
-    await (await GET(new NextRequest('https://example.test/api/og?compId=world-cup&champ=MEX'))).arrayBuffer();
-    expect(policies).toContain('follow');
-    expect(policies).not.toContain('manual');
+    await (await GET(new NextRequest('https://example.test/api/og?compId=world-cup&champ=MEX&crest=https://a.espncdn.com/private-crest'))).arrayBuffer();
+    expect(policies).not.toHaveLength(0);
+    expect(policies.every(p => p === 'manual')).toBe(true);
+    expect(healthEvents().filter(e => e.endpoint === 'og-crest').map(e => [e.status, e.outcome])).toEqual([[302, 'redirect']]);
     expect(healthEvents().filter(e => e.direction === 'outbound')).toHaveLength(policies.length);
     expect(healthEvents().filter(e => e.direction === 'inbound')).toHaveLength(1);
   });

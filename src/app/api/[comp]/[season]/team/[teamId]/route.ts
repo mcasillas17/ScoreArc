@@ -4,7 +4,7 @@ import { runDataOperation } from '@/server/data/sourceSelection';
 import { resolveResource } from '@/server/data/editionResources';
 import { providerTeamId } from '@/server/data/teamIdentity';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
-import { apiError } from '@/app/api/errorResponse';
+import { apiCacheControl, apiError } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +33,7 @@ export const GET = observeApiRoute('team', async (
     if (!team) {
       return apiError('NOT_FOUND', 404);
     }
-    return Response.json(team, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+    return Response.json(team, { headers: { 'Cache-Control': apiCacheControl(rc, 'standard') } });
   } catch (error) {
     if (!req.signal.aborted || error !== req.signal.reason) await trackAPIRequestFailure('team', 502, comp, season);
     return apiError('UPSTREAM_UNAVAILABLE', 502);

@@ -1,10 +1,10 @@
 import { fetchObservedRedirects } from '@/lib/telemetry/redirects';
 import { observeApiRoute } from '@/lib/telemetry/inbound';
-import { comparisonHealthEnabled, emitHttpHealth, httpHealthEnabled } from '@/lib/telemetry/http';
+import { emitHttpHealth, httpHealthEnabled } from '@/lib/telemetry/http';
 import { ImageResponse } from 'next/og';
 import type { NextRequest } from 'next/server';
 import { flagUrl } from '@/lib/flags';
-import { safeCrest } from '@/lib/ogUrl';
+import { canonicalOgPayload, MIN_OG_SIGNING_SECRET_LENGTH, safeCrest } from '@/lib/ogUrl';
 import { getCompetition } from '@/server/data/competitions';
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
@@ -49,19 +49,31 @@ async function liveImage(url: string | null, endpoint: 'og-crest' | 'og-flag' | 
       method, status, outcome, durationMs: Math.max(0, Math.round(performance.now() - started)), bytes });
   }
   try {
-    // Timeboxed: a slow-but-alive CDN must degrade like a dead one, or it
-    // stalls the whole card past a crawler's unfurl patience.
-    const res = comparisonHealthEnabled()
-      ? await fetchObservedRedirects(url, address => fetch(address, { method, redirect: 'manual', signal: timeout }),
-        inline ? undefined : target => target.protocol === 'https:' && !target.port && assetHosts.has(target.hostname), (redirect, next) => {
-          recordHop(redirect.status, next ? 'success' : 'redirect', 0);
-          measuredUrl = next;
-          started = performance.now();
-        })
-      : await fetch(url, { method, redirect: inline ? 'error' : 'follow', signal: timeout });
+    // Timeboxed and redirect-checked: a slow CDN degrades like a dead one, and
+    // redirects cannot leave the asset allowlist (or occur on the local mark).
+    let resolvedUrl = url;
+    const res = await fetchObservedRedirects(
+      url,
+      address => fetch(address, { method, redirect: 'manual', signal: timeout }),
+      inline ? undefined : target => target.protocol === 'https:' && !target.port && assetHosts.has(target.hostname),
+      (redirect, next) => {
+        recordHop(redirect.status, next ? 'success' : 'redirect', 0);
+        if (next) resolvedUrl = next;
+        measuredUrl = measuring ? next : undefined;
+        started = performance.now();
+      },
+    );
     status = res.status;
     if (!res.ok) { outcome = 'http_error'; return null; }
-    if (!inline) { outcome = 'success'; return url; }
+    if (!inline) {
+      const mediaType = res.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
+      if (mediaType && !mediaType.startsWith('image/')) {
+        outcome = 'body';
+        return null;
+      }
+      outcome = 'success';
+      return resolvedUrl;
+    }
     outcome = 'body';
     if (res.headers.get('content-type')?.split(';')[0] !== 'image/png' || !res.body) return null;
     // Our 25 KiB brand PNG stays local; Satori rejects loopback URLs in development.
@@ -156,20 +168,61 @@ function BigNameCard({
  * predicted champion — a national flag only where the competition is played
  * by nations, else the ?crest= (host-checked) club badge.
  */
+function cleanText(raw: string | null, maxLen: number): string {
+  if (!raw) return '';
+  return raw.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLen);
+}
+
+function canonicalCompLabel(competition: NonNullable<ReturnType<typeof getCompetition>>, rawComp: string): string {
+  if (!rawComp) return competition.shortName;
+  const allowed = new Set<string>([competition.shortName, competition.name]);
+  for (const s of Object.values(competition.seasons)) {
+    allowed.add(`${competition.shortName} ${s.label}`);
+    allowed.add(`${competition.name} ${s.label}`);
+  }
+  return allowed.has(rawComp) ? rawComp : competition.shortName;
+}
+
+async function verifyOgSignature(searchParams: URLSearchParams, secret: string): Promise<boolean> {
+  const sig = searchParams.get('sig');
+  if (!sig || !/^[0-9a-f]{32}$/.test(sig)) return false;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(canonicalOgPayload(searchParams))));
+  const expected = Array.from(mac.subarray(0, 16), b => b.toString(16).padStart(2, '0')).join('');
+  let diff = 0;
+  for (let i = 0; i < 32; i++) {
+    diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 export const GET = observeApiRoute('og', async (req: NextRequest) => {
   const { searchParams } = req.nextUrl;
+  const secret = process.env.OG_SIGNING_SECRET;
+  if (secret && secret.length >= MIN_OG_SIGNING_SECRET_LENGTH && !(await verifyOgSignature(searchParams, secret))) {
+    return new Response('Forbidden', { status: 403, headers: { 'Cache-Control': 'no-store' } });
+  }
   const requestedLocale = searchParams.get('locale');
   const locale = isLocale(requestedLocale) ? requestedLocale : DEFAULT_LOCALE;
   const competitionId = searchParams.get('compId');
   const t = getTranslator(locale, competitionId ?? undefined);
   const competition = getCompetition(competitionId ?? '');
   const generic = competitionId !== null && !competition;
-  const champ = generic ? '' : searchParams.get('champ')?.toUpperCase() ?? '';
+  const rawChamp = generic ? '' : cleanText(searchParams.get('champ'), 16).toUpperCase();
+  const champ = /^[A-Z0-9-]{2,8}$/.test(rawChamp) ? rawChamp : '';
   // Length-capped: nameSize() floors at 28px, so an arbitrarily long crafted
   // value would bleed off both card edges. Real names top out near 30.
-  const name = (searchParams.get('name') ?? '').slice(0, 60);
-  const subject = generic ? '' : (searchParams.get('subject') ?? '').slice(0, 60);
-  const comp = (!generic && searchParams.get('comp')) || t('og.liveFootball');
+  const name = cleanText(searchParams.get('name'), 60);
+  const subject = generic ? '' : cleanText(searchParams.get('subject'), 60);
+  const rawComp = generic ? '' : cleanText(searchParams.get('comp'), 60);
+  const comp = competition ? canonicalCompLabel(competition, rawComp) : (rawComp || t('og.liveFootball'));
   // A club abbreviation can collide with a FIFA code — Portland is POR, which
   // is also Portugal. The competition says which world we are in: flags only
   // where teams ARE nations. Legacy share URLs without compId are all World
@@ -183,11 +236,12 @@ export const GET = observeApiRoute('og', async (req: NextRequest) => {
   // protected preview answers /brand/*.png with 401 HTML, and an unguarded
   // mark would turn every card on that deployment into an aborted render.
   // The 1.5s timeout bounds what the self-round-trip can cost.
+  const markOrigin = process.env.VERCEL_ENV === 'production' ? 'https://www.scorearc.futbol' : req.nextUrl.origin;
   const [crest, flag, cardLogo, mark] = await Promise.all([
     liveImage(generic ? null : safeCrest(searchParams.get('crest')), 'og-crest'),
     liveImage(champ && flagStyle ? flagUrl(champ) : null, 'og-flag'),
     liveImage(competition?.logo ?? null, 'og-logo'),
-    liveImage(generic ? null : `${req.nextUrl.origin}/brand/scorearc-mark-512.png`, 'og-mark'),
+    liveImage(generic ? null : `${markOrigin}/brand/scorearc-mark-512.png`, 'og-mark'),
   ]);
 
   return new ImageResponse(
