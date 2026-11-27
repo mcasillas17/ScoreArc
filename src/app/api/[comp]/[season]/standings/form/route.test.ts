@@ -55,12 +55,12 @@ it('reads through the DataStore without summaries and forwards request cancellat
   expect(summary).not.toHaveBeenCalled();
 });
 
-it('answers a read with the no-store envelope', async () => {
+it('answers a read with the standard CDN cache-control envelope', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-30T12:00:00Z'));
   vi.spyOn(dataStore, 'getStandings').mockResolvedValueOnce([{ id: 't', name: 't', standings: [] }]);
   const response = await get('laliga', '2026-27');
   expect(response.status).toBe(200);
-  expect(response.headers.get('cache-control')).toContain('no-store');
+  expect(response.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=60, stale-while-revalidate=300');
   expect(await response.json()).toEqual({ scope: 'season', teams: {}, matches: [] });
 });

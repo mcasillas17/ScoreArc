@@ -28,7 +28,7 @@ describe('matches route with real scoreboard retrieval', () => {
     const response = await GET(request('20260629-20260629'), { params });
     expect(response.status).toBe(200);
     expect((await response.json()).map((m: { id: string }) => m.id)).toEqual(['760487', '760489']);
-    expect(response.headers.get('cache-control')).toBe('no-store, max-age=0');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=10, stale-while-revalidate=30');
     const empty = await GET(request('20260620-20260620'), { params });
     expect(empty.status).toBe(200);
     expect(await empty.json()).toEqual([]);

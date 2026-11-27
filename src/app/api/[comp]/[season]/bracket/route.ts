@@ -6,4 +6,4 @@ export const dynamic = 'force-dynamic';
 
 export const GET = seasonRoute('bracket', 'bracket', (rc, signal) =>
   runDataOperation(dataStore, source => source.getBracket(rc), signal),
-);
+'live');

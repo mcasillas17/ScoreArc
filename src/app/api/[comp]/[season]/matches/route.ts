@@ -5,7 +5,7 @@ import { resolveResource } from '@/server/data/editionResources';
 import { parseMatchQuery } from '@/server/data/matchQuery';
 import type { Match } from '@/server/data/types';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
-import { apiError } from '@/app/api/errorResponse';
+import { apiCacheControl, apiError } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,7 +54,7 @@ export const GET = observeApiRoute('matches', async (req: Request, { params }: {
       if (state === 'scheduled') matches = matches.filter((m) => m.state === 'scheduled');
       if (limit !== null) matches = matches.slice(0, limit);
     }
-    return Response.json(matches, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+    return Response.json(matches, { headers: { 'Cache-Control': apiCacheControl(rc, 'live') } });
   } catch {
     await trackAPIRequestFailure('matches', 502, comp, season);
     return apiError('UPSTREAM_UNAVAILABLE', 502);

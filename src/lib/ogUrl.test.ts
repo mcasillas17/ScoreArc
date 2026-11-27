@@ -1,10 +1,31 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { OG_VERSION, ogUrl, safeCrest, shareMetadata } from './ogUrl';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('ogUrl', () => {
   it('drops empty params and always appends the version', () => {
+    vi.stubEnv('OG_SIGNING_SECRET', '');
     const url = ogUrl({ compId: 'liga-mx', comp: 'Liga MX', crest: null, subject: undefined, locale: 'es' });
     expect(url).toBe(`/api/og?compId=liga-mx&comp=Liga+MX&locale=es&v=${OG_VERSION}`);
+  });
+
+  it('appends a deterministic 32-hex HMAC signature when OG_SIGNING_SECRET is configured', () => {
+    vi.stubEnv('OG_SIGNING_SECRET', 'test-secret-with-at-least-16-chars');
+    const a = ogUrl({ compId: 'liga-mx', comp: 'Liga MX', locale: 'es' });
+    const b = ogUrl({ compId: 'liga-mx', comp: 'Liga MX', locale: 'es' });
+    const c = ogUrl({ compId: 'liga-mx', comp: 'Liga MX', locale: 'en' });
+
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+
+    const parsedA = new URL(a, 'https://scorearc.futbol');
+    const parsedC = new URL(c, 'https://scorearc.futbol');
+    expect(parsedA.searchParams.get('sig')).toMatch(/^[0-9a-f]{32}$/);
+    expect(parsedC.searchParams.get('sig')).toMatch(/^[0-9a-f]{32}$/);
+    expect(parsedA.searchParams.get('sig')).not.toBe(parsedC.searchParams.get('sig'));
   });
 
   it('encodes reserved characters', () => {

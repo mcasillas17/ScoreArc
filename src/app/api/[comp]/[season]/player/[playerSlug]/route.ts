@@ -2,7 +2,7 @@ import { observeApiRoute } from '@/lib/telemetry/inbound';
 import { resolveResource } from '@/server/data/editionResources';
 import { loadPlayerBySlug } from '@/server/data/playerIndex';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
-import { apiError } from '@/app/api/errorResponse';
+import { apiCacheControl, apiError } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +22,7 @@ export const GET = observeApiRoute('player', async (
     if (!player) {
       return apiError('NOT_FOUND', 404);
     }
-    return Response.json(player, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+    return Response.json(player, { headers: { 'Cache-Control': apiCacheControl(rc, 'standard') } });
   } catch {
     await trackAPIRequestFailure('player', 502, comp, season);
     return apiError('UPSTREAM_UNAVAILABLE', 502);

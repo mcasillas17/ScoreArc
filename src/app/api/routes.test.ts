@@ -5,6 +5,7 @@ import { dataStore } from '@/server/data/store';
 import * as competitions from '@/server/data/competitions';
 import { currentWeekRange } from '@/server/data/dateRange';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
+import { ogUrl } from '@/lib/ogUrl';
 
 vi.mock('@/server/data/store', async (orig) => {
   const mod = (await orig()) as typeof import('@/server/data/store');
@@ -16,6 +17,9 @@ vi.mock('@/lib/telemetry/server', () => ({ trackAPIRequestFailure: vi.fn() }));
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 vi.mock('next/og', () => ({
@@ -222,6 +226,7 @@ describe.each(migratedRouteCases)('stable API errors — $name', (routeCase) => 
 
     expect(response.status).toBe(502);
     expect(body).toEqual({ error: { code: 'UPSTREAM_UNAVAILABLE' } });
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(JSON.stringify(body)).not.toContain('sensitive provider detail');
     expect(trackAPIRequestFailure).toHaveBeenCalledOnce();
     expect(trackAPIRequestFailure).toHaveBeenCalledWith(
@@ -234,6 +239,34 @@ describe.each(migratedRouteCases)('stable API errors — $name', (routeCase) => 
 });
 
 
+describe('API CDN cache headers', () => {
+  it('sets s-maxage=10 for live routes, s-maxage=60 for standard routes, and s-maxage=3600 for archives', async () => {
+    vi.spyOn(dataStore, 'getBracket').mockResolvedValueOnce([]);
+    const liveRes = await (await import('./[comp]/[season]/bracket/route')).GET(
+      new Request('http://x/api/world-cup/2026/bracket'),
+      { params: Promise.resolve(wc) },
+    );
+    expect(liveRes.status).toBe(200);
+    expect(liveRes.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=10, stale-while-revalidate=30');
+
+    vi.spyOn(dataStore, 'getStandings').mockResolvedValueOnce([]);
+    const stdRes = await (await import('./[comp]/[season]/standings/route')).GET(
+      new Request('http://x/api/world-cup/2026/standings'),
+      { params: Promise.resolve(wc) },
+    );
+    expect(stdRes.status).toBe(200);
+    expect(stdRes.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=60, stale-while-revalidate=300');
+
+    vi.spyOn(dataStore, 'getStandings').mockResolvedValueOnce([]);
+    const archiveRes = await (await import('./[comp]/[season]/standings/route')).GET(
+      new Request('http://x/api/world-cup/2022/standings'),
+      { params: Promise.resolve({ comp: 'world-cup', season: '2022' }) },
+    );
+    expect(archiveRes.status).toBe(200);
+    expect(archiveRes.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=3600, stale-while-revalidate=86400');
+  });
+});
+
 describe('player route slug resolution', () => {
   it('404s an unknown slug without an athlete request', async () => {
     vi.spyOn(dataStore, 'getEditionTeams').mockResolvedValueOnce([]);
@@ -244,10 +277,27 @@ describe('player route slug resolution', () => {
     );
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.json()).toEqual({ error: { code: 'NOT_FOUND' } });
     expect(getPlayer).not.toHaveBeenCalled();
     expect(trackAPIRequestFailure).not.toHaveBeenCalled();
   });
+
+  it.each(['../etc', 'UPPER', 'foo_bar', 'a'.repeat(101)])(
+    '404s malformed playerSlug %s before touching rosters or players',
+    async (badSlug) => {
+      const getEditionTeams = vi.spyOn(dataStore, 'getEditionTeams');
+      const getPlayer = vi.spyOn(dataStore, 'getPlayer');
+      const response = await (await import('./[comp]/[season]/player/[playerSlug]/route')).GET(
+        new Request(`http://x/api/liga-mx/2026-apertura/player/${encodeURIComponent(badSlug)}`),
+        { params: Promise.resolve({ ...mx, playerSlug: badSlug }) },
+      );
+
+      expect(response.status).toBe(404);
+      expect(getEditionTeams).not.toHaveBeenCalled();
+      expect(getPlayer).not.toHaveBeenCalled();
+    },
+  );
 });
 
 // The summary route's player-slug enrichment (docs/PRODUCT_ROADMAP.md E5's
@@ -739,5 +789,57 @@ describe('GET /api/og — validated locale', () => {
     const result = await ogMarkup('?locale=es&comp=%3Cb%3EFinal%3C%2Fb%3E');
     expect(result.html).toContain('&lt;b&gt;Final&lt;/b&gt;');
     expect(result.html).not.toContain('<b>Final</b>');
+  });
+
+  it('rejects arbitrary ?comp= spoofing on a known compId and caps legacy ?comp= / ?champ=', async () => {
+    const spoofed = await ogMarkup('?compId=liga-mx&comp=Free+Crypto+Giveaway&locale=en');
+    expect(spoofed.status).toBe(200);
+    expect(spoofed.html).toContain('Liga MX');
+    expect(spoofed.html).not.toContain('Free Crypto Giveaway');
+
+    const capped = await ogMarkup(`?comp=${'X'.repeat(90)}&champ=NOTAVALIDCODE&locale=en`);
+    expect(capped.status).toBe(200);
+    expect(capped.html).toContain('X'.repeat(60));
+    expect(capped.html).not.toContain('X'.repeat(61));
+    expect(capped.html).not.toContain('NOTAVALIDCODE');
+  });
+
+  it('drops off-allowlist crest redirects even when comparison mode is disabled', async () => {
+    const result = await ogMarkup(
+      `?subject=Am%C3%A9rica&crest=${encodeURIComponent('https://a.espncdn.com/i/teamlogos/soccer/500/227.png')}&compId=liga-mx&locale=en`,
+      async (url) => url.includes('teamlogos')
+        ? ({ ok: false, status: 302, headers: new Headers({ location: 'https://evil.example/evil.png' }) } as unknown as { ok: boolean })
+        : ({ ok: true }),
+    );
+    expect(result.status).toBe(200);
+    expect(result.html).not.toContain('teamlogos');
+    expect(result.html).not.toContain('evil.example');
+  });
+
+  it('enforces HMAC signature verification when OG_SIGNING_SECRET is configured', async () => {
+    vi.stubEnv('OG_SIGNING_SECRET', 'test-secret-with-at-least-16-chars');
+    const signedPath = ogUrl({ compId: 'world-cup', comp: "Men's World Cup 2026", locale: 'en' });
+    const fetchMock = vi.fn(async () => new Response(new Uint8Array([137, 80, 78, 71]), {
+      status: 200,
+      headers: { 'content-type': 'image/png' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { GET } = await ogRoute();
+      const okRes = await GET(new NextRequest(`http://x${signedPath}`));
+      expect(okRes.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalled();
+
+      fetchMock.mockClear();
+      const unsignedRes = await GET(new NextRequest('http://x/api/og?compId=world-cup&locale=en'));
+      expect(unsignedRes.status).toBe(403);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const tamperedRes = await GET(new NextRequest(`http://x${signedPath.replace('world-cup', 'liga-mx')}`));
+      expect(tamperedRes.status).toBe(403);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

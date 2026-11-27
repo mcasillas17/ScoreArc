@@ -5,6 +5,30 @@
  * rendering changes, or shares keep showing the old art indefinitely.
  */
 export const OG_VERSION = '4';
+export const OG_SIGNED_KEYS = ['champ', 'comp', 'compId', 'crest', 'locale', 'name', 'subject', 'v'] as const;
+export const MIN_OG_SIGNING_SECRET_LENGTH = 16;
+
+export function canonicalOgPayload(params: URLSearchParams): string {
+  const canonical = new URLSearchParams();
+  for (const key of OG_SIGNED_KEYS) {
+    const value = params.get(key);
+    if (value) canonical.set(key, value);
+  }
+  return canonical.toString();
+}
+
+type NodeCryptoModule = {
+  createHmac: (algorithm: string, key: string) => {
+    update: (data: string) => { digest: (encoding: 'hex') => string };
+  };
+};
+
+function getNodeCrypto(): NodeCryptoModule | undefined {
+  const host = globalThis as typeof globalThis & {
+    process?: { getBuiltinModule?: (id: string) => unknown };
+  };
+  return host.process?.getBuiltinModule?.('node:crypto') as NodeCryptoModule | undefined;
+}
 
 export function ogUrl(params: Record<string, string | null | undefined>): string {
   const search = new URLSearchParams();
@@ -12,6 +36,14 @@ export function ogUrl(params: Record<string, string | null | undefined>): string
     if (value) search.set(key, value);
   }
   search.set('v', OG_VERSION);
+  const secret = process.env.OG_SIGNING_SECRET;
+  if (secret && secret.length >= MIN_OG_SIGNING_SECRET_LENGTH) {
+    const nodeCrypto = getNodeCrypto();
+    if (nodeCrypto) {
+      const sig = nodeCrypto.createHmac('sha256', secret).update(canonicalOgPayload(search)).digest('hex').slice(0, 32);
+      search.set('sig', sig);
+    }
+  }
   return `/api/og?${search.toString()}`;
 }
 

@@ -44,6 +44,10 @@ export function playerSlug(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+export function isValidPlayerSlug(slug: string): boolean {
+  return slug.length > 0 && slug.length <= 100 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+}
+
 /**
  * Build slug -> player for one competition season, applying the collision
  * policy: a contested slug is withdrawn and BOTH claimants get their team
