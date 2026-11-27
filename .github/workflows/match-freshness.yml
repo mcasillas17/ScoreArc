@@ -87,7 +87,7 @@ jobs:
         if: ${{ success() && (steps.fly.outputs.fetched == 'true' || steps.select.outputs.initialize == 'true' || steps.select.outputs.initialize == 'false') }}
         env:
           RESTORE_FROM_FLY: ${{ inputs.restore_from_fly || false }}
-          SCOREARC_READER_API_KEY: ${{ secrets.SCOREARC_READER_API_KEY }}
+          SCOREARC_READER_API_KEY: ${{ !inputs.restore_from_fly && secrets.SCOREARC_READER_API_KEY || '' }}
         run: node scripts/match-freshness-monitor.mjs prepare
       - name: Commit pending checkpoint before any send
         id: pending

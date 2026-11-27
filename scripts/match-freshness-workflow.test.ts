@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAX_SENDS } from './match-freshness-checkpoint.mjs';
 import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 const yaml = createRequire(import.meta.url)('js-yaml');
 // The catalog can grow independently of the alert delivery budget.
@@ -27,7 +28,6 @@ describe('opt-in durable match workflow', () => {
     expect(workflow.on.workflow_dispatch.inputs.restore_from_fly.default).toBe(false);
     expect(workflow.jobs.check.steps.find((s: any) => s.id === 'prepare').env.MATCH_FRESHNESS_WEBHOOK_URL).toBeUndefined();
     expect(workflow.jobs.check.steps.find((s: any) => s.id === 'prepare').env.MATCH_FRESHNESS_WEBHOOK_TOKEN).toBeUndefined();
-    expect(workflow.jobs.check.steps.find((s: any) => s.id === 'prepare').env.SCOREARC_READER_API_KEY).toBe('${{ secrets.SCOREARC_READER_API_KEY }}');
     expect(workflow.jobs.check.steps.find((s: any) => s.id === 'fly').env.MATCH_FRESHNESS_WEBHOOK_URL).toBe('${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}');
     expect(workflow.jobs.check.steps.find((s: any) => s.id === 'fly').env.MATCH_FRESHNESS_WEBHOOK_TOKEN).toBe('${{ secrets.MATCH_FRESHNESS_WEBHOOK_TOKEN }}');
     expect(workflow.on.workflow_dispatch.inputs.recovery_run_id.default).toBe('');
@@ -110,13 +110,14 @@ function condition(expression: string | undefined, steps: Record<string, any>, v
   // Test-only evaluation of this repository's parsed workflow expressions.
   return Boolean(Function(`"use strict"; return (${source});`)());
 }
-async function harness() {
+async function harness(readerKey?: string) {
   const workflow = await document(); const artifacts = new Map<number, any[]>(); const history: any[] = [];
   const jobs = new Map<number, any[]>(); const notifications: any[] = [];
   let now = Date.parse('2026-10-04T12:00:00Z'); let nextArtifact = 1000; let checks = 0; let healthy = false;
   const missingScopes = new Set<string>();
   const baseURL = await local((req, res) => {
     checks++;
+    if (readerKey && req.headers['x-scorearc-client-key'] !== readerKey) return res.writeHead(403).end();
     const path = new URL(req.url ?? '/', 'http://localhost').pathname;
     if (missingScopes.has(path)) return res.writeHead(400).end('{"error":"unknown competition or season"}');
     res.writeHead(200, { 'Content-Type': 'application/json', 'X-ScoreArc-Freshness': healthy ? 'empty' : 'unavailable',
@@ -135,7 +136,8 @@ async function harness() {
   let flyState: object | null = null;
   const flyFetch = vi.fn(async () => flyState ? Response.json(flyState) : new Response(null, { status: 409 }));
   async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false, event = 'workflow_dispatch',
-    restoreFromFly = false, checkpointCommitted = '', ref = 'refs/heads/main', recoveryRunId = '', recoveryArtifactId = '' } = {}) {
+    restoreFromFly = false, checkpointCommitted = '', ref = 'refs/heads/main', recoveryRunId = '', recoveryArtifactId = '',
+    readerSecret = '' } = {}) {
     now += 600000;
     const id = history.length + 100;
     const iso = new Date(now).toISOString();
@@ -175,7 +177,17 @@ async function harness() {
             env.PENDING_ARTIFACT_ID = steps.pending?.outputs['artifact-id'] ?? '';
             if (step.env?.CHECKPOINT_COMMITTED) env.CHECKPOINT_COMMITTED = checkpointCommitted || String(condition(step.env.CHECKPOINT_COMMITTED, steps, vars, env.GITHUB_REF));
             const phaseEnv = phase === 'restore-fly' ? { ...env, MATCH_FRESHNESS_WEBHOOK_URL: 'https://receiver.example/events/secret' } : env;
-            const result = await monitor.runPhase({ phase, env: phaseEnv, workDir, now, baseURL, github, fetchImpl: flyFetch });
+            const binding = step.env?.SCOREARC_READER_API_KEY;
+            if (binding) {
+              const enabled = condition(binding.replace('secrets.SCOREARC_READER_API_KEY', 'true'), steps, vars, ref, restoreFromFly);
+              if (enabled) vi.stubEnv('SCOREARC_READER_API_KEY', readerSecret);
+            }
+            let result;
+            try {
+              result = await monitor.runPhase({ phase, env: phaseEnv, workDir, now, baseURL, github, fetchImpl: flyFetch });
+            } finally {
+              if (binding) vi.unstubAllEnvs();
+            }
             if (result.exitCode) throw new Error('Phase failed');
             entry.outputs = Object.fromEntries((await readFile(output, 'utf8')).trim().split('\n').filter(Boolean).map(line => line.split('=')));
           } else if (step.uses.startsWith('actions/download-artifact@')) {
@@ -202,6 +214,26 @@ async function harness() {
   return { run, artifacts, flyFetch, setFlyState: (state: object) => { flyState = state; }, notifications, heartbeats, missingScopes, checks: () => checks, healthy: () => { healthy = true; }, unhealthy: () => { healthy = false; }, receiverDown: (down: boolean) => { receiverDown = down; }, heartbeatDown: (down: boolean) => { heartbeatDown = down; } };
 }
 describe('enabled workflow artifact boundaries', () => {
+  it('reads protected seasons with the prepare-step secret without exposing it to other steps, logs or artifacts', async () => {
+    const workflow = await document();
+    const job = workflow.jobs.check;
+    const steps: { id?: string; env?: Record<string, string> }[] = job.steps;
+    const name = 'SCOREARC_READER_API_KEY';
+    expect(workflow.env?.[name]).toBeUndefined();
+    expect(job.env?.[name]).toBeUndefined();
+    expect(steps.filter(s => s.id !== 'prepare' && s.env?.[name] !== undefined)).toEqual([]);
+    const binding = steps.find(s => s.id === 'prepare')?.env?.[name] ?? 'false';
+    expect(condition(binding.replace('secrets.SCOREARC_READER_API_KEY', 'true'), {}, {}, 'refs/heads/main', true)).toBe(false);
+
+    const key = randomUUID();
+    const h = await harness(key);
+    h.healthy();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { id } = await h.run({ initialize: true, readerSecret: key });
+    expect(log.mock.calls.filter(([line]) => String(line).startsWith('OK '))).toHaveLength(SCOPES);
+    expect(h.artifacts.get(id)?.map(a => a.name)).toContain('match-freshness-state');
+    expect(JSON.stringify([log.mock.calls, h.artifacts.get(id), h.notifications]).includes(key)).toBe(false);
+  });
   it('hands a native checkpoint to the following Actions run without polling, sending, or pinging in the handoff', async () => {
     const h = await harness();
     const previous = await h.run({ initialize: true });

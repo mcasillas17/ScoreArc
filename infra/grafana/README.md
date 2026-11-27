@@ -41,6 +41,7 @@ For a local preview or a separate Docker Compose host, keep the deployment copy 
 | VERCEL_DRAIN_TOKEN, FLY_SHIPPER_TOKEN | Independent bearer tokens for each sender |
 | GRAFANA_ROOT_URL | Production address `https://grafana.scorearc.futbol` |
 | TUNNEL_TOKEN | Remotely managed tunnel connector token, added after creating the protected routes |
+| SCOREARC_READER_API_KEY | Fly watchdog only: optional reader credential for full-season checks. Match the reader's `READER_TRUSTED_KEY`, not the receiver's `FLY_MONITOR_TOKEN`. |
 
 For local verification, use a local root URL or omit it and run `docker compose -f compose.yaml -f local.yaml up -d`. Open `http://127.0.0.1:3432/d/scorearc-operations` using the local Grafana login. Only loopback sockets are published. Local mode uses Grafana authentication.
 
@@ -57,12 +58,15 @@ app=scorearc-observability
 image=registry.fly.io/$app:monitor-$(git rev-parse --short=12 HEAD)
 flyctl auth docker
 infra/grafana/build-image.sh "$image"
+bash infra/grafana/tests/watchdog-key.sh "$image"
 docker run --rm --platform linux/amd64 --user 65532:65532 --env LD_LIBRARY_PATH=/opt/scorearc/node/lib --entrypoint /opt/scorearc/node/bin/node "$image" --max-old-space-size=192 /opt/scorearc/scripts/fly-match-freshness.mjs observe
 docker push "$image"
 flyctl deploy --config infra/grafana/fly.toml --app "$app" --image "$image" --ha=false --strategy immediate
 ```
 
 The single mounted Machine restarts during deployment. Verify its original ID, attached volume and size, then check Grafana and Loki readiness over Fly SSH. The watchdog starts only when `FLY_MONITOR_TOKEN` is present. It runs at low priority under UID 65532 with a private environment and a restart loop independent of Grafana. State and delivery receipts live in the receiver's D1 database. Rebuild the image for edits to the monitored registry, match freshness reader or policy. The [handoff runbook](../../docs/backend/MATCH_FRESHNESS.md#fly-monitor-and-handoff) covers tokens, producer selection, checkpoints and rollback.
+
+Against a reader that already requires authentication, supply `--env SCOREARC_READER_API_KEY` to the `docker run` probe from a privately populated environment. Do not put the value in the command line or image.
 
 ## Cloudflare Access
 
