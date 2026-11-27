@@ -59,20 +59,24 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "operations" {
   account_id = var.account_id
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.operations.id
   config = {
-    ingress = [
-      {
-        hostname = local.grafana
-        service  = var.fly_origin ? "http://127.0.0.1:3000" : "http://grafana:3000"
-        origin_request = { access = {
-          required  = true
-          team_name = var.team_name
-          aud_tag   = [cloudflare_zero_trust_access_application.grafana.aud]
-        } }
-      },
-      { hostname = local.ingest, path = "^/vercel$", service = var.fly_origin ? "http://127.0.0.1:8080" : "http://receiver:8080" },
-      { hostname = local.ingest, path = "^/fly$", service = var.fly_origin ? "http://127.0.0.1:8081" : "http://receiver:8081" },
-      { service = "http_status:404" }
-    ]
+    ingress = concat(
+      [
+        {
+          hostname = local.grafana
+          service  = var.fly_origin ? "http://127.0.0.1:3000" : "http://grafana:3000"
+          origin_request = { access = {
+            required  = true
+            team_name = var.team_name
+            aud_tag   = [cloudflare_zero_trust_access_application.grafana.aud]
+          } }
+        },
+        { hostname = local.ingest, path = "^/vercel$", service = var.fly_origin ? "http://127.0.0.1:8080" : "http://receiver:8080" },
+      ],
+      # On Fly (fly_origin = true), the log shipper posts to loopback 127.0.0.1:8081/fly directly;
+      # do not expose /fly on the public tunnel unless running a separate Compose origin.
+      var.fly_origin ? [] : [{ hostname = local.ingest, path = "^/fly$", service = "http://receiver:8081" }],
+      [{ service = "http_status:404" }]
+    )
   }
 }
 

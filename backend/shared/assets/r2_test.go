@@ -18,12 +18,20 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
+const (
+	testPNG  = "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+	testJPEG = "\xff\xd8\xff\xe0\x00\x10JFIF"
+	testGIF  = "GIF89a\x01\x00\x01\x00"
+	testWebP = "RIFF\x18\x00\x00\x00WEBPVP8 "
+)
+
 type fakeObjects struct {
-	headErr     error
-	putErr      error
-	puts        int
-	headBounded bool
-	putBounded  bool
+	headErr         error
+	putErr          error
+	puts            int
+	headBounded     bool
+	putBounded      bool
+	lastContentType string
 }
 
 func (f *fakeObjects) HeadObject(
@@ -37,11 +45,14 @@ func (f *fakeObjects) HeadObject(
 
 func (f *fakeObjects) PutObject(
 	ctx context.Context,
-	_ *s3.PutObjectInput,
+	input *s3.PutObjectInput,
 	_ ...func(*s3.Options),
 ) (*s3.PutObjectOutput, error) {
 	f.puts++
 	_, f.putBounded = ctx.Deadline()
+	if input != nil && input.ContentType != nil {
+		f.lastContentType = *input.ContentType
+	}
 	return &s3.PutObjectOutput{}, f.putErr
 }
 
@@ -85,7 +96,7 @@ func TestMirrorPropagatesDownloadAndUploadFailures(t *testing.T) {
 		},
 		{
 			name:       "upload",
-			httpClient: &fakeHTTP{status: http.StatusOK, contentType: "image/png", body: "png"},
+			httpClient: &fakeHTTP{status: http.StatusOK, contentType: "image/png", body: testPNG},
 			objects: &fakeObjects{
 				headErr: &smithy.GenericAPIError{Code: "NotFound"},
 				putErr:  errors.New("write failed"),
@@ -129,7 +140,7 @@ func TestMirrorConfirmedMissDownloadsAndPuts(t *testing.T) {
 		headErr: &smithy.GenericAPIError{Code: "NotFound", Message: "missing"},
 	}
 	httpClient := &fakeHTTP{
-		status: http.StatusOK, contentType: "image/png", body: "png",
+		status: http.StatusOK, contentType: "image/png", body: testPNG,
 	}
 	mirror := testMirror(objects, httpClient)
 
@@ -141,6 +152,9 @@ func TestMirrorConfirmedMissDownloadsAndPuts(t *testing.T) {
 	}
 	if !objects.headBounded || !objects.putBounded {
 		t.Fatalf("head bounded=%v put bounded=%v", objects.headBounded, objects.putBounded)
+	}
+	if objects.lastContentType != "image/png" {
+		t.Fatalf("content type=%q", objects.lastContentType)
 	}
 }
 
@@ -162,7 +176,7 @@ func TestMirrorTreatsWrappedHTTP404AsMiss(t *testing.T) {
 		Response: &smithyhttp.Response{Response: &http.Response{StatusCode: http.StatusNotFound}},
 		Err:      errors.New("missing"),
 	}}
-	httpClient := &fakeHTTP{status: http.StatusOK, contentType: "image/png", body: "png"}
+	httpClient := &fakeHTTP{status: http.StatusOK, contentType: "image/png", body: testPNG}
 	mirror := testMirror(objects, httpClient)
 
 	if _, err := mirror.Mirror(context.Background(), "teams", "123", "https://a.espncdn.com/logo.png"); err != nil {
@@ -180,7 +194,11 @@ func TestMirrorRejectsInvalidOrOversizedContent(t *testing.T) {
 		body        string
 	}{
 		{name: "not image", contentType: "text/html", body: "nope"},
-		{name: "oversized", contentType: "image/png", body: strings.Repeat("x", maxAsset+1)},
+		{name: "oversized", contentType: "image/png", body: testPNG + strings.Repeat("x", maxAsset)},
+		{name: "empty body", contentType: "image/png", body: ""},
+		{name: "plain text masquerading as png", contentType: "image/png", body: "png"},
+		{name: "html masquerading as png", contentType: "image/png", body: "<html><script>alert(1)</script></html>"},
+		{name: "svg masquerading as png", contentType: "image/png", body: `<svg xmlns="http://www.w3.org/2000/svg"></svg>`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			objects := &fakeObjects{
@@ -196,6 +214,31 @@ func TestMirrorRejectsInvalidOrOversizedContent(t *testing.T) {
 
 			if objects.puts != 0 {
 				t.Fatalf("puts=%d", objects.puts)
+			}
+		})
+	}
+}
+
+func TestMirrorUsesSniffedImageContentType(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		headerType   string
+		body         string
+		wantPutType  string
+	}{
+		{name: "png", headerType: "image/png", body: testPNG, wantPutType: "image/png"},
+		{name: "jpeg", headerType: "image/jpeg", body: testJPEG, wantPutType: "image/jpeg"},
+		{name: "gif", headerType: "image/gif", body: testGIF, wantPutType: "image/gif"},
+		{name: "webp overrides png header", headerType: "image/png", body: testWebP, wantPutType: "image/webp"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			objects := &fakeObjects{headErr: &smithy.GenericAPIError{Code: "NotFound"}}
+			mirror := testMirror(objects, &fakeHTTP{status: http.StatusOK, contentType: tc.headerType, body: tc.body})
+			if _, err := mirror.Mirror(context.Background(), "teams", "123", "https://a.espncdn.com/logo"); err != nil {
+				t.Fatal(err)
+			}
+			if objects.lastContentType != tc.wantPutType {
+				t.Fatalf("lastContentType = %q, want %q", objects.lastContentType, tc.wantPutType)
 			}
 		})
 	}
@@ -303,7 +346,7 @@ func TestCrestHTTPHealthIsIndependentOfStorageAndValidation(t *testing.T) {
 		switch r.URL.Path {
 		case "/ok":
 			w.Header().Set("Content-Type", "image/png")
-			_, _ = io.WriteString(w, "png")
+			_, _ = io.WriteString(w, testPNG)
 		default:
 			w.Header().Set("Content-Type", "text/html")
 			_, _ = io.WriteString(w, "private-body")
@@ -318,7 +361,7 @@ func TestCrestHTTPHealthIsIndependentOfStorageAndValidation(t *testing.T) {
 			t.Fatal(err)
 		}
 		data, _, err := mirror.download(context.Background(), u)
-		if tc.outcome == "success" && (err != nil || string(data) != "png") {
+		if tc.outcome == "success" && (err != nil || string(data) != testPNG) {
 			t.Fatalf("data=%q err=%v", data, err)
 		}
 		if tc.outcome == "body" && !errors.Is(err, ErrAssetRejected) {

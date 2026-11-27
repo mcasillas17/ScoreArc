@@ -312,6 +312,40 @@ describe('mapSummaryVideos', () => {
     expect(mapSummaryVideos({})).toEqual([]);
     expect(mapSummaryVideos(null)).toEqual([]);
   });
+
+  it('rejects http:// and untrusted-host mp4 and thumbnail URLs', () => {
+    const out = mapSummaryVideos({
+      videos: [
+        {
+          id: 1,
+          headline: 'HTTP video',
+          thumbnail: 'http://a.espncdn.com/thumb.jpg',
+          links: { source: { HD: { href: 'http://media.video-cdn.espn.com/clip.mp4' } } },
+        },
+        {
+          id: 2,
+          headline: 'Evil host',
+          thumbnail: 'https://evil.example/thumb.jpg',
+          links: { source: { HD: { href: 'https://evil.example/clip.mp4' } } },
+        },
+        {
+          id: 3,
+          headline: 'Trusted video untrusted thumb',
+          thumbnail: 'javascript:alert(1)',
+          links: { source: { HD: { href: 'https://media.video-cdn.espn.com/clip.mp4' } } },
+        },
+        {
+          id: 4,
+          headline: 'Akamai clip',
+          thumbnail: 'https://espnmedia-cdn.akamaized.net/espn/media/thumb.jpg',
+          links: { source: { HD: { href: 'https://espnmedia-cdn.akamaized.net/espn/media/clip.mp4' } } },
+        },
+      ],
+    });
+    expect(out.map((v) => v.id)).toEqual(['3', '4']);
+    expect(out[0].thumbnail).toBeNull();
+    expect(out[1].thumbnail).toBe('https://espnmedia-cdn.akamaized.net/espn/media/thumb.jpg');
+  });
 });
 
 describe('mapSummaryShootout', () => {

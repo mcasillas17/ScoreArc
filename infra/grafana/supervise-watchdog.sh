@@ -4,6 +4,10 @@ set -eu
 IFS= read -r FLY_MONITOR_TOKEN <&3
 exec 3<&-
 export FLY_MONITOR_TOKEN
+if IFS= read -r SCOREARC_READER_API_KEY <&4 2>/dev/null && [ -n "$SCOREARC_READER_API_KEY" ]; then
+  export SCOREARC_READER_API_KEY
+fi
+exec 4<&- 2>/dev/null || true
 child=
 stop() {
   if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null || true; wait "$child" || true; fi

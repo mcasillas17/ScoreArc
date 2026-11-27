@@ -52,3 +52,16 @@ it('rejects redirects, oversized streams and stale or unusable checkpoint types'
     expect(() => rewrapFlyCheckpoint({ ...final, ...bad }, options)).toThrow();
   }
 });
+
+it('sends Authorization: Bearer token to clean /checkpoint when MATCH_FRESHNESS_WEBHOOK_TOKEN is set', async () => {
+  const token = 't'.repeat(40);
+  const fetchImpl = vi.fn(async (_url: URL | RequestInfo, _init?: RequestInit) => Response.json(final));
+  await downloadFlyCheckpoint(
+    { ...env, MATCH_FRESHNESS_WEBHOOK_URL: 'https://receiver.example/events', MATCH_FRESHNESS_WEBHOOK_TOKEN: token },
+    options,
+    fetchImpl,
+  );
+  const [url, init] = fetchImpl.mock.calls[0];
+  expect(String(url)).toBe('https://receiver.example/checkpoint');
+  expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${token}`);
+});

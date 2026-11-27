@@ -2,7 +2,7 @@ name: scorearc-observability
 
 services:
   grafana:
-    image: grafana/grafana:13.3.1
+    image: grafana/grafana:13.3.1@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?required}
@@ -24,7 +24,7 @@ services:
       - ./provisioning:/etc/grafana/provisioning:ro
     networks: [telemetry]
   loki:
-    image: grafana/loki:3.7.10
+    image: grafana/loki:3.7.10@sha256:b43c257ccfc925d4a50b8717cac61a3b51df8c48d01847936057e5c4075a24a7
     restart: unless-stopped
     command: ["-config.file=/etc/loki/scorearc.yaml"]
     volumes:
@@ -32,7 +32,7 @@ services:
       - loki-data:/loki
     networks: [telemetry]
   receiver:
-    image: timberio/vector:0.62.0-debian
+    image: timberio/vector:0.62.0-debian@sha256:6266b1d35c844918ff1c48ea2ec4f57c2b0664c46f3e17fc2418d5dda1692068
     restart: unless-stopped
     environment:
       VERCEL_PROJECT: ${VERCEL_PROJECT:?required}
@@ -42,7 +42,7 @@ services:
       - receiver-data:/var/lib/vector
     networks: [telemetry]
   tunnel:
-    image: cloudflare/cloudflared:2026.11.1
+    image: cloudflare/cloudflared:2026.11.1@sha256:e613aadbc2d9511785d2e67a86b0c8ac18dd63a3f9af0d06faf04cbfdcb35f2d
     profiles: [tunnel]
     restart: unless-stopped
     command: ["tunnel", "--no-autoupdate", "run"]

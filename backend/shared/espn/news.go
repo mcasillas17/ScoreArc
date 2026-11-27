@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/mcasillas17/scorearc-backend/shared/cdnurl"
 )
 
 func NewsURL(slug string) string { return fmt.Sprintf("%s/%s/news", site, slug) }
@@ -55,14 +57,16 @@ func MapNews(raw []byte) ([]NewsArticle, error) {
 func mapNewsArticles(supplied []rawNewsArticle) []NewsArticle {
 	articles := make([]NewsArticle, 0, len(supplied))
 	for _, rawArticle := range supplied {
-		if rawArticle.Headline == "" || rawArticle.Links.Web.Href == "" {
+		articleURL := cdnurl.ValidArticleURL(rawArticle.Links.Web.Href)
+		if rawArticle.Headline == "" || articleURL == "" {
 			continue
 		}
 		id := newsArticleID(rawArticle.ID, rawArticle.Headline)
 		var image *string
-		if len(rawArticle.Images) > 0 && rawArticle.Images[0].URL != "" {
-			url := rawArticle.Images[0].URL
-			image = &url
+		if len(rawArticle.Images) > 0 {
+			if img := cdnurl.ValidContentMediaURL(rawArticle.Images[0].URL); img != "" {
+				image = &img
+			}
 		}
 		articles = append(articles, NewsArticle{
 			ID:          id,
@@ -70,7 +74,7 @@ func mapNewsArticles(supplied []rawNewsArticle) []NewsArticle {
 			Description: rawArticle.Description,
 			Published:   rawArticle.Published,
 			Image:       image,
-			URL:         rawArticle.Links.Web.Href,
+			URL:         articleURL,
 			Byline:      rawArticle.Byline,
 		})
 	}

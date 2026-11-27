@@ -2,7 +2,7 @@ import { mkdir, open, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { checkScope, boundedJSON, exact } from './match-freshness-reader.mjs';
 import { equalRun, finishGitHubCheckpoint, MAX_STATE, positive, prepareGitHubCheckpoint, rewrapFlyCheckpoint, validateGitHubConfig, validateRun, validateState } from './match-freshness-checkpoint.mjs';
-import { downloadFlyCheckpoint, SEND_TIMEOUT_MS, sendHeartbeat, webhook } from './match-freshness-receiver.mjs';
+import { downloadFlyCheckpoint, receiverRequest, SEND_TIMEOUT_MS, sendHeartbeat, webhook } from './match-freshness-receiver.mjs';
 export { sendHeartbeat } from './match-freshness-receiver.mjs';
 export { validateRun, validateState } from './match-freshness-checkpoint.mjs';
 
@@ -69,7 +69,9 @@ export async function deliverMonitor(options) {
   if (options.enabled !== true || options.deliveryEnabled !== true) return { disabled: true };
   validateGitHubConfig(options);
   if (!positive(options.pendingArtifactId)) throw new Error('Pending checkpoint upload required');
-  const url = webhook(options.webhookURL);
+  const { url, authHeader } = typeof options.webhookToken === 'string' && options.webhookToken.length > 0
+    ? receiverRequest(options.webhookURL, '/events/', options.webhookToken)
+    : { url: webhook(options.webhookURL), authHeader: {} };
   const timeoutMs = options.timeoutMs ?? SEND_TIMEOUT_MS;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > SEND_TIMEOUT_MS) throw new Error('Invalid notifier timeout');
   return locked(options.stateFile, async () => {
@@ -77,7 +79,7 @@ export async function deliverMonitor(options) {
       const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await (options.fetchImpl ?? fetch)(url, { method: 'POST', redirect: 'error', signal: controller.signal,
-          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': notification.eventId }, body: JSON.stringify(notification) });
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': notification.eventId, ...authHeader }, body: JSON.stringify(notification) });
         if (response.status !== 200) throw new Error('not-acknowledged');
         const ack = await boundedJSON(response, 1024);
         if (!exact(ack, 'eventId') || ack.eventId !== notification.eventId) throw new Error('not-acknowledged');
@@ -143,7 +145,7 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
     await output({ state_written: true });
   } else if (phase === 'deliver') {
     const result = await deliverMonitor({ ...options, webhookURL: env.MATCH_FRESHNESS_WEBHOOK_URL,
-      pendingArtifactId: Number(env.PENDING_ARTIFACT_ID) });
+      webhookToken: env.MATCH_FRESHNESS_WEBHOOK_TOKEN, pendingArtifactId: Number(env.PENDING_ARTIFACT_ID) });
     if (!result.disabled) await output({ state_written: true });
   } else if (phase === 'result') {
     const state = validateState(await load(stateFile), options);
@@ -154,7 +156,7 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
     // the alert; failing every five-minute run sends unrelated GitHub failure mail.
     if (result.exitCode < 2 && options.deliveryEnabled && env.CHECKPOINT_COMMITTED === 'true') {
       try {
-        await sendHeartbeat({ webhookURL: env.MATCH_FRESHNESS_WEBHOOK_URL });
+        await sendHeartbeat({ webhookURL: env.MATCH_FRESHNESS_WEBHOOK_URL, webhookToken: env.MATCH_FRESHNESS_WEBHOOK_TOKEN });
         console.log('Match monitor heartbeat acknowledged.');
       } catch {
         console.error('Match monitor heartbeat not acknowledged; check the alert receiver logs.');

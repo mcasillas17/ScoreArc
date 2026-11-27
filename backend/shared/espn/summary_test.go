@@ -453,6 +453,48 @@ func TestValidateSummaryRejectsSparseFinalPayload(t *testing.T) {
 	}
 }
 
+func TestMapSummaryVideosRejectsHTTPAndUntrustedHosts(t *testing.T) {
+	raw := []byte(`{
+	  "videos": [
+	    {
+	      "id": 1,
+	      "headline": "HTTP clip",
+	      "thumbnail": "http://a.espncdn.com/thumb.jpg",
+	      "links": {"source": {"HD": {"href": "http://media.video-cdn.espn.com/clip_720p.mp4"}}}
+	    },
+	    {
+	      "id": 2,
+	      "headline": "Evil host clip",
+	      "thumbnail": "https://evil.example/thumb.jpg",
+	      "links": {"source": {"HD": {"href": "https://evil.example/clip_720p.mp4"}}}
+	    },
+	    {
+	      "id": 3,
+	      "headline": "Trusted video untrusted thumb",
+	      "thumbnail": "javascript:alert(1)",
+	      "links": {"source": {"HD": {"href": "https://media.video-cdn.espn.com/clip_720p.mp4"}}}
+	    },
+	    {
+	      "id": 4,
+	      "headline": "Akamai WSC highlight",
+	      "thumbnail": "https://espnmedia-cdn.akamaized.net/espn/media/thumb.jpg",
+	      "links": {"source": {"HD": {"href": "https://espnmedia-cdn.akamaized.net/espn/media/clip.mp4"}}}
+	    }
+	  ]
+	}`)
+	rs := mustParseRawSummary(t, raw)
+	videos := mapSummaryVideos(rs)
+	if len(videos) != 2 {
+		t.Fatalf("len(videos) = %d, want 2 (%+v)", len(videos), videos)
+	}
+	if videos[0].ID != "3" || videos[0].Thumbnail != nil {
+		t.Fatalf("videos[0] = %+v", videos[0])
+	}
+	if videos[1].ID != "4" || videos[1].Thumbnail == nil || *videos[1].Thumbnail != "https://espnmedia-cdn.akamaized.net/espn/media/thumb.jpg" {
+		t.Fatalf("videos[1] = %+v", videos[1])
+	}
+}
+
 // --- helpers ---
 
 func mustParseRawSummary(t *testing.T, raw []byte) rawSummary {

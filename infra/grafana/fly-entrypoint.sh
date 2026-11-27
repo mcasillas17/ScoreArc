@@ -26,12 +26,12 @@ trap stop EXIT
 trap 'exit 0' TERM INT
 if [[ -n "${FLY_MONITOR_TOKEN:-}" ]]; then
   # A separate UID and an empty environment keep Grafana, Neon and shipper
-  # credentials out of the watchdog. The token travels through fd 3.
+  # credentials out of the watchdog. Tokens travel through fds 3 and 4.
   env -i PATH="$PATH" LD_LIBRARY_PATH=/opt/scorearc/node/lib su-exec 65532:65532 \
-    sh /opt/scorearc/supervise-watchdog.sh 3<<< "$FLY_MONITOR_TOKEN" &
+    sh /opt/scorearc/supervise-watchdog.sh 3<<< "$FLY_MONITOR_TOKEN" 4<<< "${SCOREARC_READER_API_KEY:-}" &
   watchdog_pid=$!
 fi
-unset FLY_MONITOR_TOKEN
+unset FLY_MONITOR_TOKEN SCOREARC_READER_API_KEY
 if [[ -n "${TUNNEL_TOKEN:-}" ]]; then
   export GF_AUTH_PROXY_ENABLED=true GF_AUTH_PROXY_HEADER_NAME=Cf-Access-Authenticated-User-Email
   export GF_AUTH_PROXY_HEADER_PROPERTY=email GF_AUTH_PROXY_AUTO_SIGN_UP=true GF_AUTH_PROXY_WHITELIST=127.0.0.1

@@ -227,7 +227,20 @@ func (m *Mirror) download(ctx context.Context, parsedSource *url.URL) (body []by
 	if len(body) > maxAsset {
 		return nil, "", fmt.Errorf("%w: download asset exceeds %d bytes", ErrAssetRejected, maxAsset)
 	}
-	return body, contentType, nil
+	if len(body) == 0 {
+		return nil, "", fmt.Errorf("%w: download asset: empty body", ErrAssetRejected)
+	}
+	detected := http.DetectContentType(body)
+	switch detected {
+	case "image/png", "image/jpeg", "image/webp", "image/gif":
+	default:
+		return nil, "", fmt.Errorf(
+			"%w: download asset: unsupported detected content type %q",
+			ErrAssetRejected,
+			detected,
+		)
+	}
+	return body, detected, nil
 }
 
 func validateAssetURL(candidate *url.URL) error {

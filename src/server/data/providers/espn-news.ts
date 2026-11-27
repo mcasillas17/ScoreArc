@@ -1,4 +1,5 @@
 import { EspnEditionError, completeCollection, matchesId, object } from './espn-edition';
+import { sanitizeNewsArticleUrl, sanitizeProviderMediaUrl } from '@/lib/providerUrls';
 import type { NewsArticle } from '../types';
 
 function taggedArticles(articles: unknown[], leagueId?: string, slug?: string): unknown[] {
@@ -17,8 +18,8 @@ export function mapNews(raw: unknown, leagueId?: string): NewsArticle[] {
         headline: a?.headline ?? '',
         description: a?.description ?? '',
         published: a?.published ?? '',
-        image: (a?.images ?? [])[0]?.url ?? null,
-        url: a?.links?.web?.href ?? '',
+        image: sanitizeProviderMediaUrl((a?.images ?? [])[0]?.url),
+        url: sanitizeNewsArticleUrl(a?.links?.web?.href),
         byline: a?.byline ?? '',
       }))
       .filter((a) => a.headline.length > 0 && a.url.length > 0);

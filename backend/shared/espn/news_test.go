@@ -24,16 +24,16 @@ func TestMapNews(t *testing.T) {
           "description": "Description",
           "published": "2026-08-10T12:00:00Z",
           "byline": "ESPN",
-          "images": [{"url": "https://example.com/image.jpg"}],
-          "links": {"web": {"href": "https://example.com/article"}}
+          "images": [{"url": "https://a.espncdn.com/photo/image.jpg"}],
+          "links": {"web": {"href": "https://www.espn.com/soccer/story/_/id/49233296"}}
         },
         {
           "headline": "Fallback identifier",
           "images": [],
-          "links": {"web": {"href": "https://example.com/fallback"}}
+          "links": {"web": {"href": "https://www.espn.com/soccer/story/_/id/2"}}
         },
         {"headline": "No URL"},
-        {"links": {"web": {"href": "https://example.com/no-headline"}}}
+        {"links": {"web": {"href": "https://www.espn.com/soccer/story/_/id/3"}}}
       ]
     }`)
 
@@ -45,7 +45,7 @@ func TestMapNews(t *testing.T) {
 		t.Fatalf("len(MapNews()) = %d, want 2", len(articles))
 	}
 	first := articles[0]
-	if first.ID != "49233296" || first.Headline != "World Cup headline" || first.URL != "https://example.com/article" || first.Image == nil || *first.Image != "https://example.com/image.jpg" {
+	if first.ID != "49233296" || first.Headline != "World Cup headline" || first.URL != "https://www.espn.com/soccer/story/_/id/49233296" || first.Image == nil || *first.Image != "https://a.espncdn.com/photo/image.jpg" {
 		t.Fatalf("first article = %+v", first)
 	}
 	second := articles[1]
@@ -74,7 +74,7 @@ func TestMapNewsMissingArticlesIsEmptyNotNil(t *testing.T) {
 
 func TestMapNewsNullIDFallsBackToHeadline(t *testing.T) {
 	t.Parallel()
-	articles, err := MapNews([]byte(`{"articles":[{"id":null,"headline":"Fallback","links":{"web":{"href":"https://example.com/fallback"}}}]}`))
+	articles, err := MapNews([]byte(`{"articles":[{"id":null,"headline":"Fallback","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/fallback"}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestMapNewsNullIDFallsBackToHeadline(t *testing.T) {
 
 func TestMapNewsExplicitEmptyIDMatchesNullishFrontendSemantics(t *testing.T) {
 	t.Parallel()
-	articles, err := MapNews([]byte(`{"articles":[{"id":"","headline":"Headline","links":{"web":{"href":"https://example.com/empty"}}}]}`))
+	articles, err := MapNews([]byte(`{"articles":[{"id":"","headline":"Headline","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/empty"}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestMapNewsRecordedFixture(t *testing.T) {
 }
 
 func TestMapNewsObservationRequiresCompleteCollection(t *testing.T) {
-	const article = `{"headline":"News","links":{"web":{"href":"https://example.com/news"}}}`
+	const article = `{"headline":"News","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/news"}}}`
 	for _, tc := range []struct {
 		name, raw string
 		count     int
@@ -139,7 +139,7 @@ func TestMapNewsObservationRequiresCompleteCollection(t *testing.T) {
 }
 
 func TestNewsRequiresEditionLeagueTag(t *testing.T) {
-	body := []byte(`{"articles":[{"headline":"NWSL","links":{"web":{"href":"https://example.com/n"}},"categories":[{"type":"league","leagueId":2323}]},{"headline":"Manchester United","links":{"web":{"href":"https://example.com/m"}},"categories":[{"type":"league","id":2323,"leagueId":600}]}]}`)
+	body := []byte(`{"articles":[{"headline":"NWSL","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/n"}},"categories":[{"type":"league","leagueId":2323}]},{"headline":"Manchester United","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/m"}},"categories":[{"type":"league","id":2323,"leagueId":600}]}]}`)
 	rows, err := MapLeagueNewsObservation(body, "2323")
 	if err != nil || len(rows) != 1 || rows[0].Headline != "NWSL" {
 		t.Fatalf("attributed news = %v, %v", rows, err)
@@ -148,5 +148,29 @@ func TestNewsRequiresEditionLeagueTag(t *testing.T) {
 		if _, err := MapLeagueNewsObservation(raw, "8675309"); err == nil {
 			t.Fatal("unidentified news renewed an observation")
 		}
+	}
+}
+
+func TestMapNewsRejectsUntrustedLinksAndImages(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{
+      "articles": [
+        {"id": 1, "headline": "JS link", "links": {"web": {"href": "javascript:alert(1)"}}},
+        {"id": 2, "headline": "HTTP link", "links": {"web": {"href": "http://www.espn.com/soccer/story/_/id/2"}}},
+        {"id": 3, "headline": "Foreign host", "links": {"web": {"href": "https://evil.example/story"}}},
+        {
+          "id": 4,
+          "headline": "Bad image only",
+          "images": [{"url": "https://evil.example/tracker.png"}],
+          "links": {"web": {"href": "https://www.espn.com/soccer/story/_/id/4"}}
+        }
+      ]
+    }`)
+	articles, err := MapNews(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(articles) != 1 || articles[0].ID != "4" || articles[0].Image != nil {
+		t.Fatalf("unexpected articles = %+v", articles)
 	}
 }
