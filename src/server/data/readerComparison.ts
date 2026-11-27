@@ -62,6 +62,7 @@ export interface ComparisonOptions {
   espn: DataStore;
   reader: (ctx: SourceContext) => DataStore;
   fallback?: (ctx: SourceContext) => DataStore;
+  readerApiKey?: string;
   fetch?: typeof fetch;
   readerTimeoutMs?: number;
   totalTimeoutMs?: number;
@@ -136,7 +137,7 @@ async function runComparison<T>(options: ComparisonOptions, cohort: Cohort, call
     try {
       let upstreamFailures = 0;
       function budget(source: Source, signal: AbortSignal) {
-        return createRequestBudget({ signal, fetch: options.fetch, dependency: source, maxConcurrent, onFailure: error => {
+        return createRequestBudget({ signal, fetch: options.fetch, dependency: source, readerApiKey: options.readerApiKey, maxConcurrent, onFailure: error => {
           if (signal.aborted && !(signal.reason instanceof ReaderFailure)) return;
           upstreamFailures++;
           healthContext().onDependencyFailure?.(source, comparisonFault(error));

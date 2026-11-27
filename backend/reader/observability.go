@@ -12,7 +12,17 @@ import (
 
 type contextKey string
 
-const requestIDKey contextKey = "request-id"
+const (
+	requestIDKey       contextKey = "request-id"
+	maxLoggedPathBytes            = 256
+)
+
+func truncatePath(path string) string {
+	if len(path) <= maxLoggedPathBytes {
+		return path
+	}
+	return path[:maxLoggedPathBytes] + "..."
+}
 
 // newRequestID returns a short random hex id. crypto/rand.Read never fails on
 // the platforms the reader runs on; the fallback keeps logging total.
@@ -90,14 +100,15 @@ func (a *App) requestLogging(next http.Handler) http.Handler {
 			return
 		}
 		id, _ := request.Context().Value(requestIDKey).(string)
-		route := request.URL.Path
+		path := truncatePath(request.URL.Path)
+		route := path
 		if pattern := chi.RouteContext(request.Context()).RoutePattern(); pattern != "" {
 			route = pattern
 		}
 		a.logger.Info("request",
 			"request_id", id,
 			"method", request.Method,
-			"path", request.URL.Path,
+			"path", path,
 			"route", route,
 			"status", status,
 			"outcome", requestOutcome(status),

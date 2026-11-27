@@ -61,6 +61,10 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 		writeUnavailable(writer, "scores")
 		return
 	}
+	if query.Season && a.requireTrustedSeason && !a.isTrustedCaller(request) {
+		writeError(writer, http.StatusForbidden, "forbidden")
+		return
+	}
 	query.Detail = query.Detail && edition.Supports("summary")
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
 	if !ok {
@@ -96,7 +100,11 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 			break
 		}
 	}
-	cacheFor(writer, liveMaxAge(anyLive))
+	if query.Season && a.requireTrustedSeason {
+		writer.Header().Set("Cache-Control", "private, no-store")
+	} else {
+		cacheFor(writer, liveMaxAge(anyLive))
+	}
 	writeJSON(writer, http.StatusOK, matches)
 }
 

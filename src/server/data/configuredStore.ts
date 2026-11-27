@@ -10,7 +10,7 @@ import { createReaderTransport, readerOrigin, type ReaderResponse, type ReaderFa
 export function configuredDataStore(options: {
   espn: DataStore;
   fallback: (context: SourceContext) => DataStore;
-  env: { SCOREARC_DATA_SOURCE?: string; SCOREARC_READER_ORIGIN?: string; SCOREARC_READER_COMPARE_PERCENT?: string; NODE_ENV?: string };
+  env: { SCOREARC_DATA_SOURCE?: string; SCOREARC_READER_ORIGIN?: string; SCOREARC_READER_API_KEY?: string; SCOREARC_READER_COMPARE_PERCENT?: string; NODE_ENV?: string };
   fetch?: typeof fetch;
   now?: () => number;
   onComparison?: (event: ComparisonEvent) => void;
@@ -23,9 +23,11 @@ export function configuredDataStore(options: {
   if (!/^(?:100|[1-9]?\d)$/.test(percent)) throw new Error('Invalid SCOREARC_READER_COMPARE_PERCENT');
   if (percent === '0') return options.espn;
   const origin = readerOrigin(options.env.SCOREARC_READER_ORIGIN, options.env.NODE_ENV === 'production');
+  const readerApiKey = options.env.SCOREARC_READER_API_KEY;
+  if (readerApiKey && /\s/.test(readerApiKey)) throw new Error('Invalid SCOREARC_READER_API_KEY');
   const cache = new TtlCache<ReaderResponse>(options.now);
   return createSelectedDataStore({
-    source, comparePercent: Number(percent), espn: options.espn, fallback: options.fallback, fetch: options.fetch, onFallback: options.onFallback, onComparison: options.onComparison, onHttp: emitHttpHealth,
+    source, comparePercent: Number(percent), readerApiKey, espn: options.espn, fallback: options.fallback, fetch: options.fetch, onFallback: options.onFallback, onComparison: options.onComparison, onHttp: emitHttpHealth,
     onReaderResource: emitReaderResource,
     reader: ({ signal, budget }) => createReaderDataStore({
       read: createReaderTransport(origin, budget, signal), cache, cacheNamespace: origin,

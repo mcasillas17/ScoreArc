@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"time"
 
@@ -80,14 +83,19 @@ type newsReader interface {
 }
 
 type App struct {
-	store    readerStore
-	registry *config.Registry
-	logger   *slog.Logger
-	httpLog  *slog.Logger
-	news     newsReader
-	limiter  *ipRateLimiter
-	health   *healthChecker
-	now      func() time.Time
+	store                readerStore
+	registry             *config.Registry
+	logger               *slog.Logger
+	httpLog              *slog.Logger
+	news                 newsReader
+	limiter              *ipRateLimiter
+	trustedLimiter       *ipRateLimiter
+	trustedKeyHash       []byte
+	requireTrustedSeason bool
+	corsOrigins          []string
+	inFlight             chan struct{}
+	health               *healthChecker
+	now                  func() time.Time
 }
 
 const retainedStatsHeader = "X-ScoreArc-Roster-Stats"
@@ -115,13 +123,15 @@ func (a *App) router() http.Handler {
 		// Observe the 500 written by recovery and disconnects rethrown by it.
 		router.Use(a.requestLogging, a.recoverJSON)
 	}
-	router.Use(corsHeaders)
+	router.Use(a.corsOriginHeaders)
 	router.Use(a.securityHeaders)
 	router.Use(a.rateLimit)
+	router.Use(a.corsPreflight)
 
 	router.Get("/healthz", a.handleHealthz)
 	router.Route("/v1", func(router chi.Router) {
 		router.Use(a.requestTimeout)
+		router.Use(a.limitConcurrency)
 		router.Get("/competitions/{comp}/{season}/matches", a.handleMatches)
 		router.Get("/competitions/{comp}/{season}/identities", a.handleIdentities)
 		router.Get("/competitions/{comp}/{season}/calendar", a.handleCalendar)
@@ -162,14 +172,57 @@ func (a *App) resolve(competition, season string) (config.Competition, config.Se
 
 var exposedHeaders = strings.Join(append(append([]string{}, freshnessHeaders...), resourcesHeader, "X-ScoreArc-Poll-Evidence"), ", ")
 
-// corsHeaders opens the read-only API to every origin. A preflight is answered
-// here, before the rate limiter, and never reaches a route.
-func corsHeaders(next http.Handler) http.Handler {
+func (a *App) isTrustedCaller(request *http.Request) bool {
+	if len(a.trustedKeyHash) == 0 {
+		return false
+	}
+	raw := request.Header.Get(trustedCallerHeader)
+	if raw == "" {
+		return false
+	}
+	sum := sha256.Sum256([]byte(raw))
+	return subtle.ConstantTimeCompare(sum[:], a.trustedKeyHash) == 1
+}
+
+func (a *App) originAllowed(origin string) bool {
+	if a.corsOrigins == nil {
+		return true
+	}
+	if len(a.corsOrigins) == 0 || origin == "" {
+		return false
+	}
+	return slices.Contains(a.corsOrigins, strings.ToLower(origin))
+}
+
+// corsOriginHeaders attaches CORS headers before rateLimit so 429 responses
+// remain readable by allowed browser origins while keeping preflights subject
+// to rate limiting.
+func (a *App) corsOriginHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		header := writer.Header()
-		header.Set("Access-Control-Allow-Origin", "*")
-		header.Set("Access-Control-Expose-Headers", exposedHeaders)
+		switch {
+		case a.corsOrigins == nil:
+			header.Set("Access-Control-Allow-Origin", "*")
+			header.Set("Access-Control-Expose-Headers", exposedHeaders)
+		case len(a.corsOrigins) > 0:
+			header.Add("Vary", "Origin")
+			if origin := request.Header.Get("Origin"); a.originAllowed(origin) {
+				header.Set("Access-Control-Allow-Origin", origin)
+				header.Set("Access-Control-Expose-Headers", exposedHeaders)
+			}
+		}
+		next.ServeHTTP(writer, request)
+	})
+}
+
+func (a *App) corsPreflight(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method == http.MethodOptions && request.Header.Get("Access-Control-Request-Method") != "" {
+			if !a.originAllowed(request.Header.Get("Origin")) {
+				writeError(writer, http.StatusForbidden, "origin not allowed")
+				return
+			}
+			header := writer.Header()
 			header.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 			header.Set("Access-Control-Allow-Headers", "Accept, Content-Type, "+retainedStatsHeader)
 			header.Set("Access-Control-Max-Age", "300")
@@ -182,7 +235,10 @@ func corsHeaders(next http.Handler) http.Handler {
 
 func (a *App) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("X-Content-Type-Options", "nosniff")
+		header := writer.Header()
+		header.Set("X-Content-Type-Options", "nosniff")
+		header.Set("X-Frame-Options", "DENY")
+		header.Set("Referrer-Policy", "no-referrer")
 		next.ServeHTTP(writer, request)
 	})
 }
@@ -199,14 +255,15 @@ func (a *App) recoverJSON(next http.Handler) http.Handler {
 					recorder.panicked = true
 				}
 				id, _ := request.Context().Value(requestIDKey).(string)
-				route := request.URL.Path
+				path := truncatePath(request.URL.Path)
+				route := path
 				if pattern := chi.RouteContext(request.Context()).RoutePattern(); pattern != "" {
 					route = pattern
 				}
 				a.logger.Error("panic recovered",
 					"request_id", id,
 					"method", request.Method,
-					"path", request.URL.Path,
+					"path", path,
 					"route", route,
 					"panic", recovered,
 					"stack", string(debug.Stack()),
@@ -226,13 +283,44 @@ func (a *App) requestTimeout(next http.Handler) http.Handler {
 	})
 }
 
+func (a *App) limitConcurrency(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if a.inFlight == nil {
+			next.ServeHTTP(writer, request)
+			return
+		}
+		select {
+		case a.inFlight <- struct{}{}:
+		default:
+			wait := time.NewTimer(500 * time.Millisecond)
+			select {
+			case a.inFlight <- struct{}{}:
+				wait.Stop()
+			case <-wait.C:
+				writer.Header().Set("Retry-After", "1")
+				writeError(writer, http.StatusServiceUnavailable, "service busy")
+				return
+			case <-request.Context().Done():
+				wait.Stop()
+				return
+			}
+		}
+		defer func() { <-a.inFlight }()
+		next.ServeHTTP(writer, request)
+	})
+}
+
 func (a *App) rateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/healthz" {
 			next.ServeHTTP(writer, request)
 			return
 		}
-		if !a.limiter.Allow(clientIP(request)) {
+		limiter := a.limiter
+		if a.trustedLimiter != nil && a.isTrustedCaller(request) {
+			limiter = a.trustedLimiter
+		}
+		if !limiter.Allow(clientIP(request)) {
 			writer.Header().Set("Retry-After", "1")
 			writeError(writer, http.StatusTooManyRequests, "rate limit exceeded")
 			return

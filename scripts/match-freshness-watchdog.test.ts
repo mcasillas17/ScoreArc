@@ -426,4 +426,15 @@ describe('bounded match freshness watchdog', () => {
     expect(recovered.code).toBe(0);
     expect(recovered.stdout).toContain('RESOLVED world-cup/2026');
   });
+  it('sends X-ScoreArc-Client-Key only when apiKey is configured', async () => {
+    const received: (string | undefined)[] = [];
+    const baseURL = await serve((req, res) => {
+      const val = req.headers['x-scorearc-client-key'];
+      received.push(typeof val === 'string' ? val : undefined);
+      res.writeHead(200, validHeaders).end(JSON.stringify([match]));
+    });
+    await checkScope({ baseURL, ...scope, apiKey: '' });
+    await checkScope({ baseURL, ...scope, apiKey: 'trusted-watchdog-key-32-chars-min' });
+    expect(received).toEqual([undefined, 'trusted-watchdog-key-32-chars-min']);
+  });
 });

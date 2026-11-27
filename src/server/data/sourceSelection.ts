@@ -6,6 +6,7 @@ import { createRequestBudget, ReaderFailure, type ReaderFailureReason, type Requ
 export interface SourceContext { signal: AbortSignal; budget: RequestBudget }
 interface SelectionDependencies extends ComparisonOptions {
   source?: 'espn' | 'reader' | 'compare';
+  readerApiKey?: string;
   onFallback?: (reason: ReaderFailureReason) => void;
 }
 type Runner = <T>(callback: (store: DataStore) => Promise<T>, signal?: AbortSignal, maxConcurrent?: number) => Promise<T>;
@@ -36,7 +37,7 @@ export function createSelectedDataStore(deps: SelectionDependencies): DataStore 
     const total = new AbortController();
     const timer = setTimeout(() => total.abort(new ReaderFailure('timeout')), deps.totalTimeoutMs ?? 25_000);
     const signal = caller ? AbortSignal.any([caller, total.signal]) : total.signal;
-    const budget = createRequestBudget({ fetch: deps.fetch, signal, maxConcurrent });
+    const budget = createRequestBudget({ fetch: deps.fetch, signal, maxConcurrent, readerApiKey: deps.readerApiKey });
     const attempt = new AbortController();
     const readerTimer = setTimeout(() => attempt.abort(new ReaderFailure('timeout')), deps.readerTimeoutMs ?? 5_000);
     const readerSignal = AbortSignal.any([signal, attempt.signal]);

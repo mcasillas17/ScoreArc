@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -65,7 +66,17 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	pool, err := pgxpool.New(context.Background(), runtimeConfig.DatabaseURL)
+	poolConfig, err := pgxpool.ParseConfig(runtimeConfig.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	poolConfig.MaxConns = runtimeConfig.DBMaxConns
+	poolConfig.MinConns = 1
+	poolConfig.MaxConnLifetime = 30 * time.Minute
+	poolConfig.MaxConnIdleTime = 5 * time.Minute
+	poolConfig.HealthCheckPeriod = time.Minute
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
 		return err
 	}
@@ -85,14 +96,29 @@ func run(logger *slog.Logger) error {
 
 	httpLog := httphealth.Logger(logger, "reader")
 	store := NewStore(pool)
+	var trustedKeyHash []byte
+	var limiter, trustedLimiter *ipRateLimiter
+	if runtimeConfig.TrustedCallerKey != "" {
+		sum := sha256.Sum256([]byte(runtimeConfig.TrustedCallerKey))
+		trustedKeyHash = sum[:]
+		limiter = newIPRateLimiterWithGlobal(publicRequestsPerSecond, publicBurst, globalAnonymousRPS, globalAnonymousBurst)
+		trustedLimiter = newIPRateLimiter(trustedRequestsPerSecond, trustedBurst)
+	} else {
+		limiter = newIPRateLimiterWithGlobal(clientRequestsPerSecond, clientBurst, globalAnonymousRPS, globalAnonymousBurst)
+	}
 	app := &App{
-		store:    store,
-		registry: registry,
-		logger:   logger,
-		httpLog:  httpLog,
-		news:     newNewsService(processCtx, espn.NewWithOptions(espn.Options{HTTPLog: httpLog}), defaultNewsTTL),
-		limiter:  newIPRateLimiter(clientRequestsPerSecond, clientBurst),
-		health:   newHealthChecker(processCtx, store.Ping),
+		store:                store,
+		registry:             registry,
+		logger:               logger,
+		httpLog:              httpLog,
+		news:                 newNewsService(processCtx, espn.NewWithOptions(espn.Options{HTTPLog: httpLog}), defaultNewsTTL),
+		limiter:              limiter,
+		trustedLimiter:       trustedLimiter,
+		trustedKeyHash:       trustedKeyHash,
+		requireTrustedSeason: runtimeConfig.RequireTrustedSeasonScope,
+		corsOrigins:          runtimeConfig.CORSOrigins,
+		inFlight:             make(chan struct{}, runtimeConfig.MaxInFlight),
+		health:               newHealthChecker(processCtx, store.Ping),
 	}
 	server := newHTTPServer(runtimeConfig.Port, app.router())
 

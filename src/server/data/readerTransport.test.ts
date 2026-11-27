@@ -35,6 +35,22 @@ describe('reader transport', () => {
     await budget.json('https://example.test/teams/example', signal, 'espn');
     expect(sent).toEqual(['retained-v1', 'retained-v1', 'retained-v1', null, null, null]);
   });
+  it('sends X-ScoreArc-Client-Key only for reader requests and never for ESPN fallback', async () => {
+    const keys: (string | null)[] = [];
+    const signal = new AbortController().signal;
+    const budget = createRequestBudget({
+      signal,
+      readerApiKey: 'trusted-reader-key-32-chars-minimum',
+      fetch: async (_url, init) => {
+        keys.push(new Headers(init?.headers).get('X-ScoreArc-Client-Key'));
+        return response([]);
+      },
+    });
+    const read = createReaderTransport('https://reader.example', budget, signal);
+    await read('/v1/competitions/mls/2026/standings');
+    await budget.json('https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard', signal, 'espn');
+    expect(keys).toEqual(['trusted-reader-key-32-chars-minimum', null]);
+  });
   it('bounds a slow response body and distinguishes an aborted caller', async () => {
     const controller = new AbortController();
     const budget = createRequestBudget({ fetch: async () => new Response(new ReadableStream({ start() {} }), { headers: { 'X-ScoreArc-Resources': JSON.stringify(metadata) } }), signal: controller.signal });

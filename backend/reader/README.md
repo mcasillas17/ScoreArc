@@ -64,6 +64,11 @@ No new migration or frontend source change is part of this endpoint.
 |---|---:|---|
 | `DATABASE_URL` | yes | Pooled Postgres DSN for a login that belongs only to `scorearc_reader` |
 | `PORT` | no | Listen port; defaults to `8080` |
+| `READER_TRUSTED_KEY` | no | 32+ char shared secret (`X-ScoreArc-Client-Key`) separating trusted callers (50 rps, burst 200) from anonymous callers (5 rps, burst 15) |
+| `READER_REQUIRE_TRUSTED_SEASON_SCOPE` | no | When `true` (requires `READER_TRUSTED_KEY`), restricts `matches?scope=season` to trusted callers (`403` otherwise) |
+| `READER_CORS_ORIGINS` | no | Comma-separated origin allowlist, `none` (disable CORS), or `*` (default) |
+| `READER_DB_MAX_CONNS` | no | `pgxpool` `MaxConns` (`2..64`, default `12`) |
+| `READER_MAX_IN_FLIGHT` | no | Concurrent `/v1/*` request cap (`4..256`, default `24`) |
 
 Production must use TLS to Neon (`sslmode=require`). The process verifies the
 database on startup, uses bounded HTTP timeouts, and shuts down gracefully on
