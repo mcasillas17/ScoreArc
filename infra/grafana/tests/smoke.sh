@@ -9,7 +9,7 @@ project="scorearc-grafana-smoke-$$"
 dc() { docker compose -p "$project" --project-directory "$run_dir" -f "$run_dir/compose.yaml" -f "$work/ports.yaml" "$@"; }
 trap 'dc down -v >/dev/null 2>&1; rm -f "$work/ports.yaml"; rmdir "$work"' EXIT
 docker run --rm --entrypoint sh -v "$run_dir/fly/shipper.yaml:/etc/vector/shipper.yaml:ro" \
-  -v "$run_dir/tests/shipper.yaml:/etc/vector/test.yaml:ro" timberio/vector:0.62.0-debian \
+  -v "$run_dir/tests/shipper.yaml:/etc/vector/test.yaml:ro" timberio/vector:0.62.0-debian@sha256:6266b1d35c844918ff1c48ea2ec4f57c2b0664c46f3e17fc2418d5dda1692068 \
   -c 'echo "{\"org\":\"test\",\"fly\":\"test\",\"receiver\":\"test\"}" > /etc/vector/shipper-credentials.json; vector test /etc/vector/shipper.yaml /etc/vector/test.yaml'
 dc up -d loki receiver
 loki="http://$(dc port loki 3100)"

@@ -45,7 +45,7 @@ func (f *fakeESPNClient) GetJSON(ctx context.Context, url string, out any) error
 func TestNewsServiceCachesBySlugAndExpires(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
-	client := &fakeESPNClient{raw: []byte(`{"articles":[{"id":1,"headline":"Headline","images":[{"url":"https://example.com/image.jpg"}],"links":{"web":{"href":"https://example.com/1"}}}]}`)}
+	client := &fakeESPNClient{raw: []byte(`{"articles":[{"id":1,"headline":"Headline","images":[{"url":"https://a.espncdn.com/photo/image.jpg"}],"links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/1"}}}]}`)}
 	service := newNewsService(context.Background(), client, 30*time.Second)
 	service.now = func() time.Time { return now }
 
@@ -66,12 +66,12 @@ func TestNewsServiceCachesBySlugAndExpires(t *testing.T) {
 
 	// Returned slices cannot mutate the cached slice.
 	first[0].Headline = "mutated"
-	*first[0].Image = "https://example.com/mutated.jpg"
+	*first[0].Image = "https://a.espncdn.com/photo/mutated.jpg"
 	third, err := service.Get(context.Background(), "fifa.world")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if third[0].Headline != "Headline" || third[0].Image == nil || *third[0].Image != "https://example.com/image.jpg" {
+	if third[0].Headline != "Headline" || third[0].Image == nil || *third[0].Image != "https://a.espncdn.com/photo/image.jpg" {
 		t.Fatalf("cached article was mutated: %+v", third[0])
 	}
 
@@ -110,7 +110,7 @@ func TestNewsServiceCoalescesConcurrentMisses(t *testing.T) {
 	t.Parallel()
 	release := make(chan struct{})
 	client := &fakeESPNClient{
-		raw:   []byte(`{"articles":[{"id":1,"headline":"Headline","links":{"web":{"href":"https://example.com/1"}}}]}`),
+		raw:   []byte(`{"articles":[{"id":1,"headline":"Headline","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/1"}}}]}`),
 		block: release,
 	}
 	service := newNewsService(context.Background(), client, time.Minute)
@@ -145,7 +145,7 @@ func TestNewsServiceCallerCancellationDoesNotAbortSharedFetch(t *testing.T) {
 	t.Parallel()
 	release := make(chan struct{})
 	client := &fakeESPNClient{
-		raw:   []byte(`{"articles":[{"id":1,"headline":"Headline","links":{"web":{"href":"https://example.com/1"}}}]}`),
+		raw:   []byte(`{"articles":[{"id":1,"headline":"Headline","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/1"}}}]}`),
 		block: release,
 	}
 	service := newNewsService(context.Background(), client, time.Minute)
@@ -229,8 +229,8 @@ func TestNewsObservationUsesOriginalFetchAndRejectsUnknownEmpty(t *testing.T) {
 // Rejecting an incomplete refresh must preserve both the last accepted facts
 // and their fetch time; a subsequent request must retry rather than hit cache.
 func TestNewsIncompleteRefreshCannotRenewObservation(t *testing.T) {
-	const accepted = `{"articles":[{"headline":"Accepted news","links":{"web":{"href":"https://example.com/accepted"}}}]}`
-	const article = `{"headline":"Partial news","links":{"web":{"href":"https://example.com/partial"}}}`
+	const accepted = `{"articles":[{"headline":"Accepted news","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/accepted"}}}]}`
+	const article = `{"headline":"Partial news","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/partial"}}}`
 	for _, rows := range []string{"[]", "[" + article + "]"} {
 		for _, metadata := range []string{`"truncated":true`, `"hasMore":true`, `"count":3`, `"pagination":{"total":3,"pageCount":2}`, `"pagination":{"next":"page-2"}`, `"pagination":{"offset":1}`} {
 			t.Run(rows+metadata, func(t *testing.T) {
@@ -270,7 +270,7 @@ func TestNewsIncompleteRefreshCannotRenewObservation(t *testing.T) {
 }
 
 func TestNewsAttributionIsolatedBeforeCache(t *testing.T) {
-	f := &fakeESPNClient{raw: []byte(`{"articles":[{"headline":"League report","links":{"web":{"href":"https://example.com/sport"}},"categories":[{"type":"league","leagueId":"2323"}]}]}`)}
+	f := &fakeESPNClient{raw: []byte(`{"articles":[{"headline":"League report","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/sport"}},"categories":[{"type":"league","leagueId":"2323"}]}]}`)}
 	s := newNewsService(context.Background(), f, time.Hour)
 	for _, c := range []struct {
 		id string

@@ -600,3 +600,60 @@ describe('monitor heartbeat', () => {
     expect(row(db)).toHaveLength(1);
   });
 });
+
+describe('header bearer authentication', () => {
+  it('accepts clean /events, /heartbeat, and /checkpoint routes with Bearer token and blocks legacy paths when REQUIRE_HEADER_AUTH=true', async () => {
+    const { db, send, env } = await setup();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Unauthenticated or wrong-token clean routes return 404 without logging.
+    for (const url of ['http://127.0.0.1/events', 'http://127.0.0.1/heartbeat', 'http://127.0.0.1/checkpoint']) {
+      expect((await worker.fetch(post(event(), { url }), env, ctx)).status).toBe(404);
+      expect((await worker.fetch(new Request(url, { method: 'POST', headers: { Authorization: `Bearer ${'x'.repeat(40)}` } }), env, ctx)).status).toBe(404);
+    }
+    // Query strings are rejected on both clean and legacy paths.
+    expect((await worker.fetch(new Request('http://127.0.0.1/events?x=1', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json', 'Idempotency-Key': event().eventId },
+      body: JSON.stringify(event()),
+    }), env, ctx)).status).toBe(404);
+    expect((await worker.fetch(post(event(), { url: `${URL_OK}?x=1` }), env, ctx)).status).toBe(404);
+    expect(log).not.toHaveBeenCalled();
+
+    const eventResp = await worker.fetch(new Request('http://127.0.0.1/events', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json', 'Idempotency-Key': event().eventId },
+      body: JSON.stringify(event()),
+    }), env, ctx);
+    expect(eventResp.status).toBe(200);
+    expect(eventResp.headers.get('cache-control')).toBe('no-store');
+    expect(eventResp.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(send).toHaveBeenCalledOnce();
+
+    const hbResp = await worker.fetch(new Request('http://127.0.0.1/heartbeat', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    }), env, ctx);
+    expect(hbResp.status).toBe(204);
+
+    // Park a checkpoint and verify /checkpoint works via header auth.
+    await env.DB.prepare("UPDATE monitor_runtime SET mode = 'draining', last_tick = 300000, lease_until = 0, checkpoint = ? WHERE id = 1")
+      .bind(JSON.stringify({ run: { fly: 'scorearc-observability', tick: 300000 }, phase: 'final', monitorFailure: null, pending: [], reserved: [] }))
+      .run();
+    const cpResp = await worker.fetch(new Request('http://127.0.0.1/checkpoint', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    }), env, ctx);
+    expect(cpResp.status).toBe(200);
+
+    // Restore GitHub mode, then verify REQUIRE_HEADER_AUTH=true disables legacy path-suffix routes.
+    await env.DB.prepare("UPDATE monitor_runtime SET mode = 'github', last_tick = NULL, lease_until = 0, checkpoint = NULL WHERE id = 1").bind().run();
+    const strictEnv: Env = { ...env, REQUIRE_HEADER_AUTH: 'true' };
+    expect((await worker.fetch(post(event()), strictEnv, ctx)).status).toBe(404);
+    expect((await worker.fetch(new Request('http://127.0.0.1/heartbeat', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    }), strictEnv, ctx)).status).toBe(204);
+    expect(db.sqlite.prepare('SELECT count(*) AS n FROM monitor_heartbeat').get()).toEqual({ n: 1 });
+  });
+});

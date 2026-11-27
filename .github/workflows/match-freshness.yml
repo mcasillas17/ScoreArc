@@ -77,6 +77,7 @@ jobs:
           RECOVERY_RUN_ID: ${{ inputs.recovery_run_id || '' }}
           RECOVERY_ARTIFACT_ID: ${{ inputs.recovery_artifact_id || '' }}
           MATCH_FRESHNESS_WEBHOOK_URL: ${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}
+          MATCH_FRESHNESS_WEBHOOK_TOKEN: ${{ secrets.MATCH_FRESHNESS_WEBHOOK_TOKEN }}
         run: node scripts/match-freshness-monitor.mjs restore-fly
       - name: Prepare pending state
         id: prepare
@@ -86,6 +87,7 @@ jobs:
         if: ${{ success() && (steps.fly.outputs.fetched == 'true' || steps.select.outputs.initialize == 'true' || steps.select.outputs.initialize == 'false') }}
         env:
           RESTORE_FROM_FLY: ${{ inputs.restore_from_fly || false }}
+          SCOREARC_READER_API_KEY: ${{ secrets.SCOREARC_READER_API_KEY }}
         run: node scripts/match-freshness-monitor.mjs prepare
       - name: Commit pending checkpoint before any send
         id: pending
@@ -102,6 +104,7 @@ jobs:
         env:
           PENDING_ARTIFACT_ID: ${{ steps.pending.outputs.artifact-id }}
           MATCH_FRESHNESS_WEBHOOK_URL: ${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}
+          MATCH_FRESHNESS_WEBHOOK_TOKEN: ${{ secrets.MATCH_FRESHNESS_WEBHOOK_TOKEN }}
         run: node scripts/match-freshness-monitor.mjs deliver
       - name: Commit acknowledged checkpoint
         id: final
@@ -119,5 +122,6 @@ jobs:
           # Runs send a heartbeat to the receiver's not-running check, only after both
           # checkpoints were uploaded.
           MATCH_FRESHNESS_WEBHOOK_URL: ${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}
+          MATCH_FRESHNESS_WEBHOOK_TOKEN: ${{ secrets.MATCH_FRESHNESS_WEBHOOK_TOKEN }}
           CHECKPOINT_COMMITTED: ${{ steps.pending.outcome == 'success' && steps.final.outcome == 'success' }}
         run: node scripts/match-freshness-monitor.mjs result

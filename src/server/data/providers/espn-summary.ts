@@ -1,4 +1,5 @@
 import type { Scorer, Card, Shootout, MatchStats, TeamStats, WinProbability, LineupPlayer, PlayerMatchStats, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
+import { sanitizeProviderMediaUrl } from '@/lib/providerUrls';
 import { shootoutTotals } from './espn-matches';
 
 // Venue, city, referee and attendance from summary.gameInfo.
@@ -182,7 +183,7 @@ function pickMp4(video: any): string | null {
   const urls: string[] = [];
   const walk = (v: any) => {
     if (typeof v === 'string') {
-      if (/^https?:\/\/[^"']+\.mp4(\?|$)/i.test(v)) urls.push(v);
+      if (/^https:\/\/[^"']+\.mp4(\?|$)/i.test(v) && sanitizeProviderMediaUrl(v) !== null) urls.push(v);
       return;
     }
     if (Array.isArray(v)) v.forEach(walk);
@@ -203,7 +204,7 @@ export function mapSummaryVideos(raw: unknown): MatchVideo[] {
           id: String(v?.id ?? v?.cerebroId ?? headline),
           headline,
           duration: typeof v?.duration === 'number' ? v.duration : null,
-          thumbnail: v?.thumbnail ?? null,
+          thumbnail: sanitizeProviderMediaUrl(v?.thumbnail),
           mp4Url: pickMp4(v),
           isGoal: GOAL_RE.test(headline),
         };

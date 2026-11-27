@@ -11,17 +11,23 @@ export function webhook(value) {
   if ((!local && url.protocol !== 'https:') || url.username || url.password || url.hash) throw new Error('Invalid webhook configuration');
   return url;
 }
-function receiverEndpoint(webhookURL, path) {
+export function receiverRequest(webhookURL, path, webhookToken = '') {
   const url = webhook(webhookURL);
-  if (!/^\/events\/[^/]+$/.test(url.pathname) || url.search) throw new Error('Invalid webhook configuration');
+  if (url.search) throw new Error('Invalid webhook configuration');
+  if (typeof webhookToken === 'string' && webhookToken.length > 0) {
+    if (/\s/.test(webhookToken) || url.pathname !== '/events') throw new Error('Invalid webhook configuration');
+    url.pathname = path.replace(/\/$/, '');
+    return { url, authHeader: { Authorization: `Bearer ${webhookToken}` } };
+  }
+  if (!/^\/events\/[^/]+$/.test(url.pathname)) throw new Error('Invalid webhook configuration');
   url.pathname = url.pathname.replace('/events/', path);
-  return url;
+  return { url, authHeader: {} };
 }
 // T17.4: tells the receiver a monitor run finished its checks and delivery. The
 // receiver emails the owner when these stop, so it lives at the same secret token.
-export async function sendHeartbeat({ webhookURL, fetchImpl = fetch }) {
-  const url = receiverEndpoint(webhookURL, '/heartbeat/');
-  const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
+export async function sendHeartbeat({ webhookURL, webhookToken = '', fetchImpl = fetch }) {
+  const { url, authHeader } = receiverRequest(webhookURL, '/heartbeat/', webhookToken);
+  const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(SEND_TIMEOUT_MS), headers: authHeader });
   if (response.status !== 204) throw new Error('not-acknowledged');
 }
 
@@ -35,11 +41,11 @@ export async function downloadFlyCheckpoint(env, options, fetchImpl = fetch) {
       env.INITIALIZE_STATE !== 'false' || env.RECOVERY_RUN_ID || env.RECOVERY_ARTIFACT_ID) {
     throw new Error('Invalid Fly rollback invocation');
   }
-  const url = receiverEndpoint(env.MATCH_FRESHNESS_WEBHOOK_URL, '/checkpoint/');
+  const { url, authHeader } = receiverRequest(env.MATCH_FRESHNESS_WEBHOOK_URL, '/checkpoint/', env.MATCH_FRESHNESS_WEBHOOK_TOKEN);
   if (url.protocol !== 'https:') throw new Error('Fly rollback requires an HTTPS receiver');
   const response = await fetchImpl(url, {
     method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
-    headers: { Accept: 'application/json', 'Cache-Control': 'no-store' },
+    headers: { Accept: 'application/json', 'Cache-Control': 'no-store', ...authHeader },
   });
   if (response.status !== 200 || response.redirected) throw new Error('Drained checkpoint unavailable');
   return boundedJSON(response, MAX_STATE);

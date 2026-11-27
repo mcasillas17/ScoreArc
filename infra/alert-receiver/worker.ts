@@ -17,6 +17,7 @@ export interface Env {
   DB: { prepare(sql: string): { bind(...values: (string | number)[]): Statement } };
   EMAIL: { send(message: { to: string; from: string; subject: string; text: string; html: string }): Promise<unknown> };
   RECEIVER_TOKEN: string;
+  REQUIRE_HEADER_AUTH?: string;
   ALERT_RECIPIENT: string;
   FLY_MONITOR_TOKEN?: string;
   // Fine-grained token for this repository only, Actions read and write.
@@ -192,9 +193,24 @@ async function handle(request: Request, env: Env) {
   }
   const url = new URL(request.url);
   if (url.pathname.startsWith('/fly/')) return handleFly(request, env, url);
+  if (url.search) return empty(404);
   const path = url.pathname;
-  const route = ['/events/', '/heartbeat/', '/checkpoint/'].find(prefix => path.startsWith(prefix));
-  if (!route || !(await sameToken(path.slice(route.length), env.RECEIVER_TOKEN))) return empty(404);
+  const cleanRoutes: Record<string, string> = {
+    '/events': '/events/',
+    '/heartbeat': '/heartbeat/',
+    '/checkpoint': '/checkpoint/',
+  };
+  let route: string | undefined;
+  if (Object.hasOwn(cleanRoutes, path)) {
+    if (!await sameToken(request.headers.get('authorization') ?? '', `Bearer ${env.RECEIVER_TOKEN}`)) {
+      return empty(404);
+    }
+    route = cleanRoutes[path];
+  } else {
+    if (env.REQUIRE_HEADER_AUTH === 'true') return empty(404);
+    route = ['/events/', '/heartbeat/', '/checkpoint/'].find(prefix => path.startsWith(prefix));
+    if (!route || !(await sameToken(path.slice(route.length), env.RECEIVER_TOKEN))) return empty(404);
+  }
   if (request.method !== 'POST') return rejected(405);
   if (route === '/checkpoint/') return exportCheckpoint(env.DB);
   const legacy = await env.DB.prepare(githubGuard.query).bind().first();
@@ -238,7 +254,14 @@ async function acceptEvent(event: Event, env: Env, canSend?: () => Promise<boole
     }
     await env.DB.prepare('UPDATE alert_event SET emailed_at = ? WHERE event_id = ?').bind(new Date().toISOString(), event.eventId).run();
   }
-  return new Response(JSON.stringify({ eventId: event.eventId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify({ eventId: event.eventId }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
 }
 
 const worker = {

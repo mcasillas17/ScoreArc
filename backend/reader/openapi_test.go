@@ -212,7 +212,7 @@ func TestOpenAPIBoxScoreRejectedQuery(t *testing.T) {
 func TestOpenAPIValidatesNewsMapperOutput(t *testing.T) {
 	t.Parallel()
 	document := loadOpenAPI(t)
-	articles, err := espn.MapNews([]byte(`{"articles":[{"headline":"Headline","links":{"web":{"href":"https://example.com/article"}}}]}`))
+	articles, err := espn.MapNews([]byte(`{"articles":[{"headline":"Headline","links":{"web":{"href":"https://www.espn.com/soccer/story/_/id/article"}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}

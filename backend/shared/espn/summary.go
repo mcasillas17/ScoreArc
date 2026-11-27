@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/shared/cdnurl"
 )
 
 // Port of src/server/data/providers/espn-summary.ts. Reads ESPN's per-match
@@ -777,7 +778,7 @@ func mapSummaryShootoutDetail(rs rawSummary, homeID, awayID string) *ShootoutDet
 var goalRe = regexp.MustCompile(`(?i)\b(goals?|scores?|scored|winner|equali[sz]er|penalt|hat[- ]?trick|brace|strike)\b`)
 
 var (
-	mp4URLRe = regexp.MustCompile(`(?i)^https?://[^"']+\.mp4(\?|$)`)
+	mp4URLRe = regexp.MustCompile(`(?i)^https://[^"']+\.mp4(\?|$)`)
 	p720Re   = regexp.MustCompile(`(?i)720p`)
 	p540Re   = regexp.MustCompile(`(?i)540p|360p`)
 )
@@ -795,7 +796,7 @@ func pickMp4(rawVideo json.RawMessage) *string {
 	walk = func(v interface{}) {
 		switch x := v.(type) {
 		case string:
-			if mp4URLRe.MatchString(x) {
+			if mp4URLRe.MatchString(x) && cdnurl.ValidContentMediaURL(x) != "" {
 				urls = append(urls, x)
 			}
 		case []interface{}:
@@ -858,12 +859,18 @@ func mapSummaryVideos(rs rawSummary) []MatchVideo {
 			d := int(n)
 			duration = &d
 		}
+		var thumbnail *string
+		if meta.Thumbnail != nil {
+			if valid := cdnurl.ValidContentMediaURL(*meta.Thumbnail); valid != "" {
+				thumbnail = &valid
+			}
+		}
 		mapped = append(mapped, indexed{
 			v: MatchVideo{
 				ID:        id,
 				Headline:  headline,
 				Duration:  duration,
-				Thumbnail: meta.Thumbnail,
+				Thumbnail: thumbnail,
 				Mp4URL:    mp4,
 				IsGoal:    goalRe.MatchString(headline),
 			},

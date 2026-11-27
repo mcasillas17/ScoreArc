@@ -1,6 +1,7 @@
 'use client';
 
 import type { NewsArticle } from '@/server/data/types';
+import { isSafeHttpsUrl } from '@/lib/providerUrls';
 import { trackEvent } from '@/lib/telemetry/client';
 
 /**
@@ -21,18 +22,21 @@ export default function NewsRow({
   image?: boolean;
   detail?: boolean;
 }) {
+  const safeUrl = isSafeHttpsUrl(article.url) ? article.url : null;
+  if (!safeUrl) return null;
+  const safeImage = isSafeHttpsUrl(article.image) ? article.image : null;
   return (
     <a
       className={image ? 'dg-nw' : 'dg-nw dg-nw--text'}
-      href={article.url}
+      href={safeUrl}
       target="_blank"
       rel="noreferrer"
       onClick={() => trackEvent('News article opened', { surface })}
     >
       {image &&
-        (article.image ? (
+        (safeImage ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img className="dg-nwimg" src={article.image} alt="" loading="lazy" referrerPolicy="no-referrer" />
+          <img className="dg-nwimg" src={safeImage} alt="" loading="lazy" referrerPolicy="no-referrer" />
         ) : (
           <span className="dg-nwimg" aria-hidden />
         ))}

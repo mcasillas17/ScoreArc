@@ -1,8 +1,8 @@
 ARG OPERATIONS_IMAGE=operations
-FROM timberio/vector:0.62.0-alpine AS vector
-FROM grafana/loki:3.7.10 AS loki
-FROM cloudflare/cloudflared:2026.11.1 AS tunnel
-FROM grafana/grafana:13.3.1 AS operations
+FROM timberio/vector:0.62.0-alpine@sha256:149c77c09aabf16a3aa543abf9cea2e2152c1d9a7d4a45669fe7ad05f4ed8b27 AS vector
+FROM grafana/loki:3.7.10@sha256:b43c257ccfc925d4a50b8717cac61a3b51df8c48d01847936057e5c4075a24a7 AS loki
+FROM cloudflare/cloudflared:2026.11.1@sha256:e613aadbc2d9511785d2e67a86b0c8ac18dd63a3f9af0d06faf04cbfdcb35f2d AS tunnel
+FROM grafana/grafana:13.3.1@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf AS operations
 USER root
 RUN apk add --no-cache bash su-exec
 COPY --from=vector /usr/local/bin/vector /usr/local/bin/vector

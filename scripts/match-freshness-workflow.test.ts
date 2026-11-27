@@ -26,7 +26,10 @@ describe('opt-in durable match workflow', () => {
     expect(workflow.on.workflow_dispatch.inputs.initialize_state.default).toBe(false);
     expect(workflow.on.workflow_dispatch.inputs.restore_from_fly.default).toBe(false);
     expect(workflow.jobs.check.steps.find((s: any) => s.id === 'prepare').env.MATCH_FRESHNESS_WEBHOOK_URL).toBeUndefined();
+    expect(workflow.jobs.check.steps.find((s: any) => s.id === 'prepare').env.MATCH_FRESHNESS_WEBHOOK_TOKEN).toBeUndefined();
+    expect(workflow.jobs.check.steps.find((s: any) => s.id === 'prepare').env.SCOREARC_READER_API_KEY).toBe('${{ secrets.SCOREARC_READER_API_KEY }}');
     expect(workflow.jobs.check.steps.find((s: any) => s.id === 'fly').env.MATCH_FRESHNESS_WEBHOOK_URL).toBe('${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}');
+    expect(workflow.jobs.check.steps.find((s: any) => s.id === 'fly').env.MATCH_FRESHNESS_WEBHOOK_TOKEN).toBe('${{ secrets.MATCH_FRESHNESS_WEBHOOK_TOKEN }}');
     expect(workflow.on.workflow_dispatch.inputs.recovery_run_id.default).toBe('');
     expect(workflow.on.workflow_dispatch.inputs.recovery_artifact_id.default).toBe('');
     expect(workflow.jobs.check.if).toContain("vars.MATCH_FRESHNESS_ENABLED == 'true'");
@@ -54,7 +57,10 @@ describe('opt-in durable match workflow', () => {
     expect(step('final').if).toContain("steps.deliver.outputs.state_written == 'true'");
     expect(step('result').if).toContain('always()');
     // The heartbeat needs the same secret as delivery; a missing line would fail silently.
-    for (const id of ['deliver', 'result']) expect(step(id).env.MATCH_FRESHNESS_WEBHOOK_URL).toBe('${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}');
+    for (const id of ['deliver', 'result']) {
+      expect(step(id).env.MATCH_FRESHNESS_WEBHOOK_URL).toBe('${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}');
+      expect(step(id).env.MATCH_FRESHNESS_WEBHOOK_TOKEN).toBe('${{ secrets.MATCH_FRESHNESS_WEBHOOK_TOKEN }}');
+    }
     expect(step('result').env.CHECKPOINT_COMMITTED).toBe("${{ steps.pending.outcome == 'success' && steps.final.outcome == 'success' }}");
     expect(steps.filter((s: any) => s.uses).every((s: any) => /@[0-9a-f]{40}$/.test(s.uses))).toBe(true);
     expect(steps.findIndex((s: any) => s.id === 'pending')).toBeLessThan(steps.findIndex((s: any) => s.id === 'deliver'));
@@ -380,5 +386,51 @@ describe('heartbeat', () => {
       await expect(monitor.sendHeartbeat({ webhookURL, fetchImpl: ok })).rejects.toThrow('Invalid webhook configuration');
     }
     await expect(monitor.sendHeartbeat({ webhookURL: 'https://r.example/events/abc', fetchImpl: async () => new Response('{}', { status: 200 }) })).rejects.toThrow();
+  });
+  it('supports header bearer authentication on /events, /heartbeat, and /checkpoint while rejecting mismatched configurations', async () => {
+    const token = 't'.repeat(40);
+    const seen: { url: string; auth: string | null }[] = [];
+    const ok = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      seen.push({ url: String(input), auth: headers.get('authorization') });
+      return new Response(null, { status: 204 });
+    });
+    await monitor.sendHeartbeat({ webhookURL: 'https://r.example/events', webhookToken: token, fetchImpl: ok });
+    expect(seen).toEqual([{ url: 'https://r.example/heartbeat', auth: `Bearer ${token}` }]);
+
+    for (const bad of [
+      { webhookURL: 'https://r.example/events', webhookToken: undefined },
+      { webhookURL: 'https://r.example/events/secret', webhookToken: token },
+      { webhookURL: 'https://r.example/events', webhookToken: 'bad token' },
+    ]) {
+      await expect(monitor.sendHeartbeat({ ...bad, fetchImpl: ok })).rejects.toThrow('Invalid webhook configuration');
+    }
+
+    const dir = await mkdtemp(join(tmpdir(), 'monitor-header-auth-')); dirs.push(dir);
+    const stateFile = join(dir, 'state.json');
+    const baseRun = { repository: 'mcasillas17/ScoreArc', workflow: '.github/workflows/match-freshness.yml', ref: 'refs/heads/main', id: 1, number: 1, attempt: 1, sha: 'a'.repeat(40) };
+    const common = {
+      enabled: true, deliveryEnabled: true, baseURL: 'https://scorearc-reader.fly.dev',
+      scopes: [{ competition: 'liga-mx', season: '2026-apertura' }], stateFile, run: baseRun,
+      now: Date.parse('2026-10-04T12:00:00Z'),
+    };
+    await monitor.prepareMonitor({
+      ...common, initialize: true,
+      check: async () => ({
+        ok: false, urgent: true, count: 1, context: '',
+        observation: { freshness: 'stale', poll: 'ok', stale: 1, overdue: 0, error: null },
+      }),
+    });
+    const eventFetch = vi.fn(async (_input: URL | RequestInfo, init?: RequestInit) => {
+      const payload = JSON.parse(String(init?.body)) as { eventId: string };
+      return Response.json({ eventId: payload.eventId });
+    });
+    const res = await monitor.deliverMonitor({
+      ...common, now: Date.parse('2026-10-04T12:01:00Z'),
+      webhookURL: 'https://r.example/events', webhookToken: token, pendingArtifactId: 1, fetchImpl: eventFetch,
+    });
+    expect(res).toMatchObject({ pending: 0 });
+    expect(String(eventFetch.mock.calls[0][0])).toBe('https://r.example/events');
+    expect(new Headers(eventFetch.mock.calls[0][1]?.headers).get('authorization')).toBe(`Bearer ${token}`);
   });
 });

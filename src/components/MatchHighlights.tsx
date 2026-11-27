@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { MatchVideo } from '@/server/data/types';
+import { isSafeHttpsUrl } from '@/lib/providerUrls';
 import { useTranslations } from '@/i18n/I18nProvider';
 import { BallIcon } from './MatchIcons';
 
@@ -16,16 +17,18 @@ function Clip({ video }: { video: MatchVideo }) {
   const t = useTranslations();
   const [playing, setPlaying] = useState(false);
   const dur = fmtDuration(video.duration);
+  const safeMp4 = isSafeHttpsUrl(video.mp4Url) ? video.mp4Url : null;
+  const safeThumbnail = isSafeHttpsUrl(video.thumbnail) ? video.thumbnail : null;
 
   return (
     <figure className="mh-clip">
       <div className="mh-frame">
-        {playing && video.mp4Url ? (
+        {playing && safeMp4 ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
           <video
             className="mh-video"
-            src={video.mp4Url}
-            poster={video.thumbnail ?? undefined}
+            src={safeMp4}
+            poster={safeThumbnail ?? undefined}
             controls
             autoPlay
             playsInline
@@ -34,14 +37,15 @@ function Clip({ video }: { video: MatchVideo }) {
           <button
             type="button"
             className="mh-thumb-btn"
-            onClick={() => setPlaying(true)}
+            onClick={() => safeMp4 && setPlaying(true)}
+            disabled={!safeMp4}
             aria-label={t('matchDetails.playHighlight', video.headline)}
           >
-            {video.thumbnail ? (
+            {safeThumbnail ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 className="mh-thumb"
-                src={video.thumbnail}
+                src={safeThumbnail}
                 alt=""
                 loading="lazy"
                 referrerPolicy="no-referrer"
