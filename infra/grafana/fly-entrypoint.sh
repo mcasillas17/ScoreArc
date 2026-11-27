@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
+# Only the watchdog should inherit these credentials, not even the setup helpers.
+export -n FLY_MONITOR_TOKEN SCOREARC_READER_API_KEY
 # The volume is root-owned on first boot. Run the services without root privileges.
 for dir in /data/grafana /data/loki /data/vector /run/secrets; do
   install -d -o 472 -g 472 -m 0700 "$dir"

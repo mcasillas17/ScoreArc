@@ -4,10 +4,14 @@ set -eu
 IFS= read -r FLY_MONITOR_TOKEN <&3
 exec 3<&-
 export FLY_MONITOR_TOKEN
-if IFS= read -r SCOREARC_READER_API_KEY <&4 2>/dev/null && [ -n "$SCOREARC_READER_API_KEY" ]; then
-  export SCOREARC_READER_API_KEY
+# The entrypoint always supplies fd 4, with an empty line for anonymous reads.
+IFS= read -r SCOREARC_READER_API_KEY <&4
+if IFS= read -r _ <&4; then
+  echo 'SCOREARC_READER_API_KEY must be a single line' >&2
+  exit 1
 fi
-exec 4<&- 2>/dev/null || true
+exec 4<&-
+export SCOREARC_READER_API_KEY
 child=
 stop() {
   if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null || true; wait "$child" || true; fi
