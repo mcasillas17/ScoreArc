@@ -299,7 +299,7 @@ The job requires repository variable `MATCH_FRESHNESS_ENABLED=true` and
 work. Alerts go to the owner through the email receiver; no recipient address or
 secret is stored in the repository.
 
-The only input is `initialize_state` (default false). Explicit initialization is
+`initialize_state` defaults to false. Explicit initialization is
 allowed only after bounded API enumeration proves there is no prior checkpoint or
 uncertain preparation. Later runs automatically select the newest trusted
 state-bearing run, including failures, and prefer its acknowledged checkpoint to
@@ -309,10 +309,13 @@ Unknown/expired/deleted/corrupt newest state blocks; it never means healthy data
 Runs serialize in the existing concurrency group. Preparation records incident
 transitions and reserves bounded send attempts; `match-freshness-pending` must
 upload successfully before delivery. Delivery additionally requires
-`MATCH_FRESHNESS_DELIVERY_ENABLED=true` and owner-configured
-`MATCH_FRESHNESS_WEBHOOK_URL`. Successful per-event acknowledgments are saved in
-`match-freshness-state`. Both artifacts retain for 90 days. Failed final upload
-leaves the pending checkpoint authoritative, with a documented duplicate risk.
+`MATCH_FRESHNESS_DELIVERY_ENABLED=true` and two repository Actions secrets:
+`MATCH_FRESHNESS_WEBHOOK_URL` is `https://<worker-host>/events` with no token in
+the URL; `MATCH_FRESHNESS_WEBHOOK_TOKEN` matches the Worker's `RECEIVER_TOKEN`
+and is sent in the `Authorization: Bearer <token>` header. Successful per-event
+acknowledgments are saved in `match-freshness-state`. Both artifacts retain for
+90 days. Failed final upload leaves the pending checkpoint authoritative, with a
+documented duplicate risk.
 
 See [the operational contract and activation checklist](../../docs/backend/MATCH_FRESHNESS.md#durable-match-monitor)
 for the single webhook protocol, costs, state barriers, rollback, scope migration,

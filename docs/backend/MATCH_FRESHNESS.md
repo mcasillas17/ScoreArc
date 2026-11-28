@@ -310,9 +310,10 @@ repository variable `MATCH_FRESHNESS_ENABLED=true` (for `TRUE` and other values,
 [disable and recover](#disable-and-recover-without-losing-history)). Absent/false means **zero reader checks
 and zero webhook sends**. The receiver cannot see that variable: once runs
 have armed its [not-running check](#not-running-check), it emails once after the
-heartbeats stop unless the check is paused. Delivery additionally requires
-`MATCH_FRESHNESS_DELIVERY_ENABLED=true` (exact in the CLI) and the owner-approved secret
-`MATCH_FRESHNESS_WEBHOOK_URL`. Only main
+heartbeats stop unless the check is paused. GitHub delivery additionally requires
+`MATCH_FRESHNESS_DELIVERY_ENABLED=true` (exact in the CLI) and the two
+[receiver secrets](#configuration-inventory), `MATCH_FRESHNESS_WEBHOOK_URL` and
+`MATCH_FRESHNESS_WEBHOOK_TOKEN`. Only main
 first-attempt runs are trusted; the job's `refs/heads/main` comparison is also
 case-insensitive, so the CLI's exact ref check (before any state, network or
 webhook work) is the enforcement; use a new run, not rerun.
@@ -372,11 +373,20 @@ typecheck includes the Worker.
 |---|---|
 | `MATCH_FRESHNESS_ENABLED` | Repository Actions variable. Only literal `true` enables the CLI; absent/false means zero checks/sends ([`TRUE` and pauses](#disable-and-recover-without-losing-history)). A deliberate pause follows [disable and recover](#disable-and-recover-without-losing-history). An armed [not-running check](#not-running-check) still emails once after a disable unless paused with `DELETE FROM monitor_heartbeat`. |
 | `MATCH_FRESHNESS_DELIVERY_ENABLED` | Repository Actions variable. Only literal `true` permits reservations/sends. Absent/false still allows checks and queued transitions when the main gate is true; it is **not** an offline dry run and pending events make the result exit 2. It also stops heartbeats, so pause an armed [not-running check](#not-running-check) the same way. |
-| `MATCH_FRESHNESS_WEBHOOK_URL` | Repository Actions secret, supplied only to the delivery and result steps; the result step uses it only for the [heartbeat](#not-running-check). Owner-approved HTTPS receiver implementing the protocol below; do not put its URL/token in logs, PRs or acceptance records. |
+| `MATCH_FRESHNESS_WEBHOOK_URL` | Repository Actions secret: exactly `https://<worker-host>/events` on the owner-approved receiver. No token, trailing slash or query string. |
+| `MATCH_FRESHNESS_WEBHOOK_TOKEN` | Repository Actions secret: the same raw value as the Worker's `RECEIVER_TOKEN` (at least 32 characters, no whitespace). Store only the token; the sender adds the `Bearer` prefix. Never put the token in a URL, log, PR or acceptance record. |
+| `REQUIRE_HEADER_AUTH` | Worker setting: keep it set to the literal `true` in production, including during rollback. This returns 404 for legacy token-in-path requests even if the token matches. Those routes exist for compatibility with historical senders, not for new setup or recovery. |
 | `GITHUB_DISPATCH_TOKEN` | Receiver Worker secret (`npx wrangler@4.123.0 secret put GITHUB_DISPATCH_TOKEN` from `infra/alert-receiver`, interactive prompt). Fine-grained personal access token for this repository only with the **Actions: write** permission, nothing else; the Worker uses it only to dispatch `match-freshness.yml` on `main`. It never reaches the workflow. GitHub cannot narrow it to one workflow: the same permission can dispatch any workflow here (including `ci.yml`'s release input, whose production environments only require `main`), cancel or re-run runs, delete artifacts and disable workflows, and the runbook treats a re-run, a cancelled Prepare or a deleted checkpoint as a halt needing manual recovery. Keep it only in the Worker secret, give it the shortest expiry you will maintain, and revoke it in GitHub at once if it may have leaked. The owner accepted this reach on November 8, 2026 (the token is the owner's, expiry the owner's choice). When it expires or is revoked, dispatches are rejected and the not-running check emails; create a new one and replace the secret. |
-| `initialize_state` | Sole manual input, boolean, default false. True only for proven first history; never a repair flag. |
+| `initialize_state` | Manual input, boolean, default false. True only for proven first history; never a repair flag. |
 | Run identity and API access | Actions supplies `GITHUB_*` provenance and its token with `contents: read` / `actions: read`. Do not substitute another repository/ref/run identity or a personal token to bypass validation. |
 | Reader and scopes | Fixed CLI origin `https://scorearc-reader.fly.dev`; monitored editions come from `backend/config/competitions.json`. A changed origin requires a reviewed migration, not initialization. A new scope has no prior incident. Before removing an old scope, wait for recovery or verified dormancy and for all its transitions to be delivered; see [when an email is actionable](#when-an-email-is-actionable). |
+
+Only three workflow steps receive the two webhook secrets: event delivery
+(`POST /events`), the result step's [heartbeat](#not-running-check) (`POST /heartbeat`),
+and the explicit Fly rollback fetch (`POST /checkpoint`). All three use the same
+`Authorization: Bearer <token>` header. `FLY_MONITOR_TOKEN` authenticates the
+Fly producer to `/fly/*`; `SCOREARC_READER_API_KEY` authenticates season reads
+to the reader. Neither is the GitHub webhook token.
 
 The **Prepare pending state** log lists the competition name, scope and result
 of each completed reader check. For a newly added competition, compare an
@@ -460,13 +470,13 @@ drop-event or retry-budget override. Do not describe resetting as recovery.
    or this upload fails after the receiver accepted a message, the next run uses
    the pending snapshot and may resend the **same event ID**.
 
-The one transport is HTTP POST to an owner-controlled HTTPS webhook (HTTP is
-accepted only for loopback tests). It sends `Content-Type: application/json` and
-`Idempotency-Key: <eventId>`. The receiver must return **HTTP 200** with JSON
+GitHub delivers events by HTTPS POST to `/events` (HTTP is accepted only for
+loopback tests). Alongside the bearer header it sends `Content-Type: application/json`
+and `Idempotency-Key: <eventId>`. The receiver must return **HTTP 200** with JSON
 `{"eventId":"<same ID>"}` after durable acceptance. A generic Slack/Discord webhook
 is not automatically compatible with this acknowledgment contract. Redirects,
 timeouts, 429, all other status codes, malformed or mismatched acknowledgment are
-explicit delivery failures; response contents and secret URL are never logged.
+explicit delivery failures; the sender does not log the response contents or credentials.
 The receiver should deduplicate by event ID and preserve acceptance ordering.
 
 This is bounded **at-least-once retry**, subject to retained state and eventual
@@ -495,9 +505,10 @@ manual run is recorded under [first manual run](#first-manual-run-november-7-202
 [`infra/alert-receiver`](../../infra/alert-receiver/worker.ts) is a Cloudflare
 Worker with D1. With migration `0002` and its cron trigger, it also runs the
 [not-running check](#not-running-check) on its own route and table, and the same
-cron [dispatches the monitor](#worker-dispatch-november-8-2026) once that is deployed. For each event the Worker:
+cron [dispatches the monitor](#worker-dispatch-november-8-2026) once that is deployed. For each GitHub event the Worker:
 
-1. Checks the secret token in the URL path (`/events/<token>`); a wrong token gets 404.
+1. Checks the `Authorization: Bearer <token>` header on `POST /events` against its
+   `RECEIVER_TOKEN`; a missing or incorrect bearer gets 404.
 2. Accepts only a JSON body of at most 4 KiB with the exact expected fields, whose
    `Idempotency-Key` equals `eventId`. Strict patterns keep headers and markup out
    of the email.
@@ -521,7 +532,7 @@ deliveries of one ID could also both send, but the workflow serializes runs.
 | Sender | `alerts@scorearc.futbol`, which requires Email Routing on the domain. |
 | Flood bound | At most 300 new events per rolling 24 hours, enforced in the insert itself, then 503 with no acknowledgment. This bounds rows and D1 writes as well as email. A retry of an already accepted event is not capped, so an accepted alert still arrives. Refused events wait in order in the sender's queue, about 29 hours at worst with its retry backoff, and sustained flapping can fill that queue and pause checks (`queue-full`). Real transitions should stay far below this ceiling; if the cap trips during a real incident, raise it through a reviewed change. A cap with no matching incident means rotating the token. |
 | Retention | D1 rows are kept with no automatic deletion: event ID, event content and timestamps, no personal data. Roughly one small row per transition. |
-| Logs | Invocation logs stay off because request URLs contain the token. The Worker's own lines are kept and name only the failing stage, known `E_*` codes or a rejection status. Because the sender reports every non-200 as `delivery-failed`, check these lines first when the queue is stuck: a repeated `rejected` status means the sender and receiver disagree, not an outage. A wrong token writes no line, so with no lines at all, first check that `MATCH_FRESHNESS_WEBHOOK_URL` carries the current `RECEIVER_TOKEN`. After deployment, confirm in the Cloudflare log view that retained lines carry no URL. `wrangler tail` output can include the URL, so never paste it anywhere. |
+| Logs | Keep invocation logs off: even a rejected legacy request can carry a credential in its URL. The Worker's own lines name only the failing stage, known `E_*` codes or a rejection status. For `delivery-failed`, check those lines first. A repeated `rejected` status means the sender and receiver disagree. An auth 404 writes no Worker line: check the exact `/events` URL and that `MATCH_FRESHNESS_WEBHOOK_TOKEN` matches `RECEIVER_TOKEN`, without printing either value. Confirm retained lines carry no URL; never paste raw `wrangler tail` output or authorization headers. |
 | Cost | Expected $0 per Cloudflare's published terms, checked November 1, 2026: sends to verified addresses are free on all plans; Workers Free allows 100,000 requests/day and D1 Free 100,000 writes/day and 5 GB. Requests with a wrong token count toward that allowance, so a flood could block real deliveries until the daily reset; the sender keeps those events and retries them, but sustained blocking can exhaust an event's retry budget. No rate limit is configured. |
 
 Emails may land in spam at first because the domain is new as a sender. Acceptance
@@ -533,13 +544,15 @@ covering OPEN, repeated failure, RESOLVED, recurrence, timeouts, wrong acknowled
 and acceptance followed by a crash. D1 and the email service are stand-ins there. A
 `wrangler@4.123.0 dev --local` smoke run confirmed the Worker starts on `workerd`,
 deduplicates on local D1 and calls the local email simulator; it does not prove real
-delivery. To repeat it, put test-only `RECEIVER_TOKEN` and `ALERT_RECIPIENT` values in
-the gitignored `infra/alert-receiver/.dev.vars` (the token needs at least 32 characters,
-or the Worker answers 500; `openssl rand -hex 32` works), then from that directory run
+delivery. To repeat it, put `REQUIRE_HEADER_AUTH=true` and test-only `RECEIVER_TOKEN`
+and `ALERT_RECIPIENT` values in the gitignored `infra/alert-receiver/.dev.vars`
+(the token needs at least 32 characters, or the Worker answers 500;
+`openssl rand -hex 32` works), then from that directory run
 `npx wrangler@4.123.0 d1 migrations apply scorearc-alert-receiver --local` and
-`npx wrangler@4.123.0 dev --local --test-scheduled`. Posting one event twice should return
-two 200 acknowledgments and call the email simulator once. A POST to
-`/heartbeat/<token>` should return 204 and write the `monitor_heartbeat` row, and a GET
+`npx wrangler@4.123.0 dev --local --test-scheduled`. Send `Authorization: Bearer <test-token>`
+on both routes: posting one event twice to `/events` should return two 200 acknowledgments
+and call the email simulator once. A POST to `/heartbeat` should return 204 and write
+the `monitor_heartbeat` row, and a GET
 of `/__scheduled` should return 200. **Never put a real `GITHUB_DISPATCH_TOKEN` in
 `.dev.vars`**: `/__scheduled` dispatches the production workflow with it. A dummy value
 exercises the call safely (GitHub answers 401, logged as `dispatch rejected 401`).
@@ -552,11 +565,14 @@ after `npx wrangler@4.123.0 login` on the account that owns `scorearc.futbol`):
 2. `npx wrangler@4.123.0 d1 create scorearc-alert-receiver`, then put its ID in `wrangler.jsonc`.
 3. `npx wrangler@4.123.0 d1 migrations apply scorearc-alert-receiver --remote`.
 4. `npx wrangler@4.123.0 secret put ALERT_RECIPIENT` and `npx wrangler@4.123.0 secret put RECEIVER_TOKEN`,
-   with the token from `openssl rand -hex 32`, which is URL-path safe. Use the
-   interactive prompts, so values stay out of shell history and chat.
+   with a new token from `openssl rand -hex 32`. Use the interactive prompts so
+   values stay out of shell history and chat. At the
+   `npx wrangler@4.123.0 secret put REQUIRE_HEADER_AUTH` prompt, enter the literal
+   `true` to enforce header-only authentication.
 5. `npx wrangler@4.123.0 deploy`.
-6. Store `https://<worker-host>/events/<token>` as the `MATCH_FRESHNESS_WEBHOOK_URL`
-   repository secret, using the interactive `gh secret set` prompt.
+6. Use `gh secret set MATCH_FRESHNESS_WEBHOOK_URL` to store `https://<worker-host>/events`,
+   then `gh secret set MATCH_FRESHNESS_WEBHOOK_TOKEN` to store the same token as
+   the Worker's `RECEIVER_TOKEN`. Enter both at the prompts, not on the command line.
 
 The [not-running check](#not-running-check) adds migration `0002` and a cron
 trigger: deploying it is step 3 then step 5 again, after separate approval. The
@@ -564,15 +580,16 @@ trigger: deploying it is step 3 then step 5 again, after separate approval. The
 (step 4's prompt; see the inventory) and is step 5 again.
 
 To stop alerts, follow the disable procedure below, including the not-running
-check's pause step. Rotating the token requires
-updating both secrets together; deliveries fail and retry in between.
+check's pause step. To rotate the GitHub webhook token, update the Worker's
+`RECEIVER_TOKEN` and GitHub's `MATCH_FRESHNESS_WEBHOOK_TOKEN` together;
+deliveries fail and retry while they differ. The URL does not change.
 
 #### Not-running check
 
 A monitor that never starts cannot report its own absence, so the receiver watches
 for it. After each run whose checks, delivery and both checkpoint uploads
-worked, including a delivered data incident, the result step posts to `/heartbeat/<token>` at the same
-host and token as the webhook, expecting 204. A monitor failure (exit 2) or delivery
+worked, including a delivered data incident, the result step posts to `/heartbeat` on the
+webhook host with the same bearer header, expecting 204. A monitor failure (exit 2) or delivery
 switched off sends no heartbeat, and a failed heartbeat only logs
 a line without changing the run's result. A manual dispatch counts like the
 receiver's own dispatches (and so did the scheduled runs before November 8).
@@ -944,7 +961,7 @@ A scope that is genuinely unhealthy by then stays open and queues no RESOLVED ev
   then all remaining activation steps on November 7.
 - **Recipient:** the owner's verified Email Routing destination (address not
   recorded; this repository is public).
-- **Configuration (secret names only; variable values are not secret):** secret `MATCH_FRESHNESS_WEBHOOK_URL`, variables
+- **Configuration at activation** (historical path-token setup; use the [configuration inventory](#configuration-inventory) today): secret `MATCH_FRESHNESS_WEBHOOK_URL`, variables
   `MATCH_FRESHNESS_DELIVERY_ENABLED=true` and `MATCH_FRESHNESS_ENABLED=true`.
 - **Runs:** first run above (`8e7df54`, initialized); after #245 merged,
   [42457078062](https://github.com/mcasillas17/ScoreArc/actions/runs/42457078062)
@@ -1112,13 +1129,13 @@ wrangler d1 execute DB --remote --config "$receiver" --command "SELECT mode,last
 gh run list --repo mcasillas17/ScoreArc --workflow match-freshness.yml --limit 3
 ```
 
-**Return ownership to GitHub.** Park an idle, fully acknowledged checkpoint between ticks. If deliveries are pending or a crashed process has an outstanding lease, let the next eligible Fly tick finalize them. Keep the receiver, its GitHub dispatch secret, and both repository enablement variables available for rollback.
+**Return ownership to GitHub.** Park an idle, fully acknowledged checkpoint between ticks. If deliveries are pending or a crashed process has an outstanding lease, let the next eligible Fly tick finalize them. Retain the receiver, its GitHub dispatch secret, both repository enablement variables and both [GitHub webhook secrets](#configuration-inventory). Keep `REQUIRE_HEADER_AUTH=true`; rollback changes the producer, not authentication.
 
 ```sh
 wrangler d1 execute DB --remote --config "$receiver" --command "UPDATE monitor_runtime SET mode='draining' WHERE id=1 AND mode='fly' AND lease_until=0 AND json_extract(checkpoint,'$.phase')='final' AND json_array_length(checkpoint,'$.pending')=0 AND json_array_length(checkpoint,'$.reserved')=0 AND json_type(checkpoint,'$.monitorFailure')='null' AND (json_extract(checkpoint,'$.run.tick')=last_tick OR json_extract(checkpoint,'$.run.repository')='mcasillas17/ScoreArc') RETURNING json_extract(checkpoint,'$.run.fly') AS fly,last_tick"
 ```
 
-For a Fly-authored checkpoint, enable the workflow, run the explicit restore and wait for its final upload. It exports the parked receiver checkpoint and preserves the entire history without making observations, sending emails or beating the heartbeat:
+For a Fly-authored checkpoint, enable the workflow, run the explicit restore and wait for its final upload. The workflow posts to `/checkpoint` on the webhook host with `MATCH_FRESHNESS_WEBHOOK_TOKEN` as its bearer, not the Fly token or reader key. The restore preserves the parked history without making observations, sending emails or beating the heartbeat:
 
 ```sh
 gh workflow enable match-freshness.yml --repo mcasillas17/ScoreArc
